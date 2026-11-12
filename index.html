@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON 格式化工作台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">{ }</span>
+    <div>
+      <h1>JSON 格式化工作台</h1>
+      <p>粘贴、格式化、压缩、验证、树形浏览，一站搞定</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn ghost" id="btnSample">载入示例</button>
+    <button class="btn ghost" id="btnUpload">打开文件</button>
+    <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
+    <button class="btn ghost" id="btnPaste">粘贴剪贴板</button>
+    <button class="btn ghost" id="btnClear">清空</button>
+  </div>
+</header>
+
+<section class="toolbar">
+  <div class="group">
+    <button class="btn primary" id="btnFormat">格式化</button>
+    <button class="btn" id="btnMinify">压缩</button>
+    <button class="btn" id="btnValidate">验证</button>
+  </div>
+  <div class="group options">
+    <label>缩进
+      <select id="indentSelect">
+        <option value="2" selected>2 空格</option>
+        <option value="4">4 空格</option>
+        <option value="tab">Tab</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="sortKeys"> 按键名排序</label>
+    <label class="check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
+  </div>
+  <div class="group">
+    <div class="seg" role="tablist" aria-label="输出视图">
+      <button class="seg-btn active" id="viewCode" role="tab">代码</button>
+      <button class="seg-btn" id="viewTree" role="tab">树形</button>
+    </div>
+    <button class="btn" id="btnCopy">复制结果</button>
+    <button class="btn" id="btnDownload">下载 .json</button>
+  </div>
+</section>
+
+<main class="panes">
+  <section class="pane">
+    <div class="pane-head">
+      <span>输入</span>
+      <span class="hint" id="inputStats">0 字符</span>
+    </div>
+    <div class="editor-wrap">
+      <div class="gutter" id="inputGutter">1</div>
+      <textarea id="input" spellcheck="false" placeholder='在此粘贴 JSON，例如：{"name": "Muse", "version": 1}'></textarea>
+    </div>
+  </section>
+
+  <section class="pane">
+    <div class="pane-head">
+      <span>输出</span>
+      <span class="hint" id="outputStats">等待输入</span>
+    </div>
+    <div class="output-wrap">
+      <pre id="output" class="code-view"><code>格式化后的 JSON 会显示在这里。</code></pre>
+      <div id="tree" class="tree-view" hidden></div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span id="statusDot" class="dot idle"></span>
+  <span id="statusText">就绪</span>
+  <span class="spacer"></span>
+  <span id="detailStats"></span>
+</footer>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
