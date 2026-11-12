@@ -14,12 +14,17 @@
   var outputStats = $('outputStats');
   var detailStats = $('detailStats');
   var toastEl = $('toast');
+  var panes = $('panes');
+  var paneLeft = $('paneLeft');
+  var divider = $('divider');
 
   var lastValue = null;      // 最近一次解析成功的 JS 值
-  var lastFormatted = '';    // 最近一次输出的字符串
+  var lastFormatted = '';    // 当前输出区文本
+  var lastDownloadName = 'formatted.json';
+  var outputMode = 'json';   // 'json' | 'ts' | 'text'
   var currentView = 'code';  // 'code' | 'tree'
 
-  /* ---------- 工具 ---------- */
+  /* ---------- 通用 ---------- */
   function showToast(msg) {
     toastEl.textContent = msg;
     toastEl.hidden = false;
@@ -41,7 +46,67 @@
     return v === 'tab' ? '\t' : Number(v);
   }
 
-  /* 递归按键名排序 */
+  /* ---------- 主题 ---------- */
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    $('btnTheme').textContent = theme === 'light' ? '🌙 深色' : '☀️ 浅色';
+    try { localStorage.setItem('json-wb-theme', theme); } catch (e) {}
+  }
+
+  $('btnTheme').addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    applyTheme(cur === 'light' ? 'dark' : 'light');
+  });
+
+  /* ---------- 可拖动分隔条 ---------- */
+  function initResizer() {
+    var saved = null;
+    try { saved = localStorage.getItem('json-wb-split'); } catch (e) {}
+    if (saved) {
+      var pct = Math.min(75, Math.max(25, Number(saved)));
+      if (pct) paneLeft.style.width = pct + '%';
+    }
+    divider.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      divider.classList.add('dragging');
+      try { divider.setPointerCapture(e.pointerId); } catch (err) {}
+      var vertical = window.innerWidth <= 820;
+      var rect = panes.getBoundingClientRect();
+      var startX = e.clientX;
+      var startY = e.clientY;
+      var startW = paneLeft.getBoundingClientRect().width;
+      var startH = paneLeft.getBoundingClientRect().height;
+      if (!vertical) paneLeft.style.height = '';
+
+      function onMove(ev) {
+        var pct;
+        if (vertical) {
+          pct = (startH + (ev.clientY - startY)) / rect.height * 100;
+          paneLeft.style.height = Math.min(75, Math.max(25, pct)) + '%';
+        } else {
+          pct = (startW + (ev.clientX - startX)) / rect.width * 100;
+          pct = Math.min(75, Math.max(25, pct));
+          paneLeft.style.width = pct + '%';
+        }
+      }
+      function onUp() {
+        divider.classList.remove('dragging');
+        divider.removeEventListener('pointermove', onMove);
+        divider.removeEventListener('pointerup', onUp);
+        try {
+          if (vertical) {
+            localStorage.setItem('json-wb-split-v', paneLeft.style.height);
+          } else {
+            localStorage.setItem('json-wb-split', parseFloat(paneLeft.style.width));
+          }
+        } catch (err) {}
+      }
+      divider.addEventListener('pointermove', onMove);
+      divider.addEventListener('pointerup', onUp);
+    });
+  }
+
+  /* ---------- 递归按键名排序 ---------- */
   function sortDeep(value) {
     if (Array.isArray(value)) return value.map(sortDeep);
     if (value && typeof value === 'object') {
@@ -52,7 +117,7 @@
     return value;
   }
 
-  /* 统计：键总数、最大深度 */
+  /* ---------- 统计 ---------- */
   function analyze(value) {
     var keys = 0, depth = 0;
     (function walk(v, d) {
@@ -66,7 +131,7 @@
     return { keys: keys, depth: depth };
   }
 
-  /* 从报错信息里提取 position，再换算行列 */
+  /* ---------- 报错行列定位 ---------- */
   function errorPosition(text, err) {
     var m = /position (\d+)/.exec(err.message);
     if (!m) {
@@ -202,6 +267,21 @@
     if (view === 'tree') renderTreeView();
   }
 
+  /* ---------- 输出显示 ---------- */
+  function showOutput(text, opts) {
+    opts = opts || {};
+    outputMode = opts.mode || 'json';
+    lastFormatted = text;
+    lastDownloadName = opts.download || 'formatted.json';
+    if (outputMode === 'json') {
+      output.innerHTML = '<code>' + highlight(text) + '</code>';
+    } else {
+      output.innerHTML = '<code>' + escapeHtml(text) + '</code>';
+    }
+    outputStats.textContent = opts.stats || (text.length + ' 字符');
+    if (currentView === 'tree' && outputMode === 'json') renderTreeView();
+  }
+
   /* ---------- 核心操作 ---------- */
   function parseInput() {
     var text = input.value;
@@ -230,13 +310,11 @@
       ? JSON.stringify(v)
       : JSON.stringify(v, null, getIndent());
     lastValue = v;
-    lastFormatted = formatted;
-    output.innerHTML = '<code>' + highlight(formatted) + '</code>';
+    showOutput(formatted, { mode: 'json', download: 'formatted.json', stats: formatted.length + ' 字符' });
     var st = analyze(v);
-    outputStats.textContent = formatted.length + ' 字符';
     detailStats.textContent = '键 ' + st.keys + ' 个 · 最大深度 ' + st.depth + ' 层';
     setStatus('ok', mode === 'minify' ? '已压缩' : '格式化成功');
-    if (currentView === 'tree') renderTreeView();
+    saveHistory(input.value);
   }
 
   function doFormat() {
@@ -255,11 +333,357 @@
     var st = analyze(r.value);
     lastValue = r.value;
     lastFormatted = r.text;
+    outputMode = 'json';
     setStatus('ok', 'JSON 有效 · 键 ' + st.keys + ' 个 · 最大深度 ' + st.depth + ' 层');
     outputStats.textContent = '有效';
     detailStats.textContent = '键 ' + st.keys + ' 个 · 最大深度 ' + st.depth + ' 层';
     if (currentView === 'tree') renderTreeView();
+    saveHistory(input.value);
   }
+
+  /* ---------- JSON 修复 ---------- */
+  function repairJson(text) {
+    var out = '';
+    var i = 0, n = text.length;
+    var state = 'normal'; // normal | dstr | sstr | lineComment | blockComment
+    while (i < n) {
+      var c = text[i], nx = text[i + 1];
+      if (state === 'normal') {
+        if (c === '"') { state = 'dstr'; out += c; i++; }
+        else if (c === "'") { state = 'sstr'; out += '"'; i++; }
+        else if (c === '/' && nx === '/') { state = 'lineComment'; i += 2; }
+        else if (c === '/' && nx === '*') { state = 'blockComment'; i += 2; }
+        else { out += c; i++; }
+      } else if (state === 'dstr') {
+        out += c;
+        if (c === '\\' && i + 1 < n) { out += text[i + 1]; i += 2; }
+        else if (c === '"') { state = 'normal'; i++; }
+        else i++;
+      } else if (state === 'sstr') {
+        if (c === '\\' && i + 1 < n) {
+          var e = text[i + 1];
+          if (e === "'") { out += "'"; i += 2; }
+          else if (e === '"') { out += '\\"'; i += 2; }
+          else { out += c + e; i += 2; }
+        } else if (c === '"') { out += '\\"'; i++; }
+        else if (c === "'") { out += '"'; state = 'normal'; i++; }
+        else { out += c; i++; }
+      } else if (state === 'lineComment') {
+        if (c === '\n') { out += c; state = 'normal'; }
+        i++;
+      } else { // blockComment
+        if (c === '*' && nx === '/') { state = 'normal'; i += 2; }
+        else i++;
+      }
+    }
+    // 未加引号的键加上引号
+    out = out.replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)(\s*:)/g, '$1"$2"$3');
+    // 尾随逗号
+    out = out.replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(out);
+  }
+
+  function doRepair() {
+    var text = input.value;
+    if (!text.trim()) { showToast('输入为空，先粘贴 JSON'); return; }
+    try {
+      var value = repairJson(text);
+      input.value = JSON.stringify(value, null, getIndent());
+      updateGutter();
+      applyResult(value, 'format');
+      setStatus('ok', '已修复并格式化');
+      showToast('已修复常见错误并格式化');
+    } catch (e) {
+      setStatus('err', '修复失败，仍无法解析：' + e.message);
+      showToast('修复失败，请检查输入');
+    }
+  }
+
+  /* ---------- JSONPath 查询 ---------- */
+  function parseJsonPath(expr) {
+    expr = expr.trim();
+    if (!expr || expr[0] !== '$') return null;
+    var tokens = [];
+    var rest = expr.slice(1);
+    var re = /\.\.([A-Za-z_$][A-Za-z0-9_$]*)|\.([A-Za-z_$][A-Za-z0-9_$]*)|\.\*|\['([^'\]]+)'\]|\["([^"\]]+)"\]|\[(\d+)\]|\[\*\]/g;
+    var m, lastIdx = 0;
+    while ((m = re.exec(rest))) {
+      if (m.index !== lastIdx) return null;
+      lastIdx = re.lastIndex;
+      if (m[1] !== undefined) tokens.push({ t: 'recursive', key: m[1] });
+      else if (m[2] !== undefined) tokens.push({ t: 'key', key: m[2] });
+      else if (m[0] === '.*') tokens.push({ t: 'wildcard' });
+      else if (m[3] !== undefined) tokens.push({ t: 'key', key: m[3] });
+      else if (m[4] !== undefined) tokens.push({ t: 'key', key: m[4] });
+      else if (m[5] !== undefined) tokens.push({ t: 'index', idx: Number(m[5]) });
+      else if (m[0] === '[*]') tokens.push({ t: 'wildcard' });
+    }
+    if (lastIdx !== rest.length) return null;
+    return tokens;
+  }
+
+  function evalJsonPath(root, tokens) {
+    var current = [{ path: '$', value: root }];
+    tokens.forEach(function (tok) {
+      var next = [];
+      current.forEach(function (item) {
+        var v = item.value;
+        if (tok.t === 'key') {
+          if (v && typeof v === 'object' && !Array.isArray(v) && tok.key in v) {
+            next.push({ path: item.path + '.' + tok.key, value: v[tok.key] });
+          }
+        } else if (tok.t === 'index') {
+          if (Array.isArray(v) && tok.idx < v.length) {
+            next.push({ path: item.path + '[' + tok.idx + ']', value: v[tok.idx] });
+          }
+        } else if (tok.t === 'wildcard') {
+          if (Array.isArray(v)) {
+            v.forEach(function (el, i) { next.push({ path: item.path + '[' + i + ']', value: el }); });
+          } else if (v && typeof v === 'object') {
+            Object.keys(v).forEach(function (k) { next.push({ path: item.path + '.' + k, value: v[k] }); });
+          }
+        } else if (tok.t === 'recursive') {
+          (function walk(node, p) {
+            if (node && typeof node === 'object') {
+              if (!Array.isArray(node) && tok.key in node) {
+                next.push({ path: p + '.' + tok.key, value: node[tok.key] });
+              }
+              if (Array.isArray(node)) {
+                node.forEach(function (el, i) { walk(el, p + '[' + i + ']'); });
+              } else {
+                Object.keys(node).forEach(function (k) { walk(node[k], p + '.' + k); });
+              }
+            }
+          })(v, item.path);
+        }
+      });
+      current = next;
+    });
+    return current;
+  }
+
+  function doJsonPath() {
+    var expr = $('jsonpathInput').value;
+    var r = parseInput();
+    if (!r) return;
+    var tokens = parseJsonPath(expr);
+    if (!tokens) {
+      setStatus('err', 'JSONPath 表达式不支持，请用 $.a.b[0]、$..key、$.* 这类写法');
+      return;
+    }
+    var matches = evalJsonPath(r.value, tokens);
+    $('jpResults').hidden = false;
+    $('jpResultsCount').textContent = '共 ' + matches.length + ' 个匹配';
+    $('jsonpathCount').textContent = matches.length + ' 个匹配';
+    var body = $('jpResultsBody');
+    body.innerHTML = '';
+    if (matches.length === 0) {
+      body.innerHTML = '<div class="jp-empty">没有匹配到任何结果。</div>';
+      setStatus('warn', 'JSONPath 查询完成，没有匹配');
+      return;
+    }
+    matches.forEach(function (m) {
+      var row = document.createElement('div');
+      row.className = 'jp-row';
+      var preview = JSON.stringify(m.value);
+      if (preview.length > 120) preview = preview.slice(0, 120) + '…';
+      row.innerHTML = '<span class="jp-path">' + escapeHtml(m.path) + '</span><span class="jp-val">' + escapeHtml(preview) + '</span>';
+      row.title = '点击复制该值';
+      row.addEventListener('click', function () { copyText(JSON.stringify(m.value, null, 2)); });
+      body.appendChild(row);
+    });
+    setStatus('ok', 'JSONPath 查询完成，' + matches.length + ' 个匹配');
+  }
+
+  /* ---------- 生成 TypeScript 类型 ---------- */
+  function tsTypeName(raw) {
+    var s = String(raw).replace(/[^A-Za-z0-9_$]/g, '_');
+    if (/^\d/.test(s)) s = '_' + s;
+    return s.charAt(0).toUpperCase() + s.slice(1) || 'Item';
+  }
+
+  function generateTs(root) {
+    var defs = [];
+    var used = {};
+    function uniqueName(base) {
+      var name = base, i = 2;
+      while (used[name]) { name = base + i; i++; }
+      used[name] = true;
+      return name;
+    }
+    function infer(v, name) {
+      if (v === null) return 'null';
+      if (Array.isArray(v)) {
+        if (v.length === 0) return 'unknown[]';
+        var elemTypes = [];
+        v.forEach(function (el) {
+          var t = infer(el, name + 'Item');
+          if (elemTypes.indexOf(t) === -1) elemTypes.push(t);
+        });
+        return elemTypes.length === 1 ? elemTypes[0] + '[]' : '(' + elemTypes.join(' | ') + ')[]';
+      }
+      if (typeof v === 'object') {
+        var iface = uniqueName(name);
+        var keys = Object.keys(v);
+        var lines = keys.map(function (k) {
+          var t = infer(v[k], iface + tsTypeName(k));
+          return '  ' + (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : JSON.stringify(k)) + ': ' + t + ';';
+        });
+        defs.push('interface ' + iface + ' {\n' + lines.join('\n') + '\n}');
+        return iface;
+      }
+      if (typeof v === 'string') return 'string';
+      if (typeof v === 'number') return 'number';
+      if (typeof v === 'boolean') return 'boolean';
+      return 'unknown';
+    }
+    // 数组元素的对象：合并键，缺失的标可选
+    function inferArrayOfObjects(arr, name) {
+      var allKeys = [];
+      arr.forEach(function (el) {
+        if (el && typeof el === 'object' && !Array.isArray(el)) {
+          Object.keys(el).forEach(function (k) { if (allKeys.indexOf(k) === -1) allKeys.push(k); });
+        }
+      });
+      var iface = uniqueName(name);
+      var lines = allKeys.map(function (k) {
+        var present = arr.filter(function (el) { return el && typeof el === 'object' && k in el; }).length;
+        var types = [];
+        arr.forEach(function (el) {
+          if (el && typeof el === 'object' && k in el) {
+            var t = infer(el[k], iface + tsTypeName(k));
+            if (types.indexOf(t) === -1) types.push(t);
+          }
+        });
+        var optional = present < arr.length ? '?' : '';
+        return '  ' + (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : JSON.stringify(k)) + optional + ': ' + (types.join(' | ') || 'unknown') + ';';
+      });
+      defs.push('interface ' + iface + ' {\n' + lines.join('\n') + '\n}');
+      return iface;
+    }
+    // 顶层是对象数组时走合并逻辑
+    if (Array.isArray(root) && root.length > 0 && root.every(function (el) { return el && typeof el === 'object' && !Array.isArray(el); })) {
+      var itemType = inferArrayOfObjects(root, 'Item');
+      return defs.join('\n\n') + '\n\ntype Root = ' + itemType + '[];';
+    }
+    var top = infer(root, 'Root');
+    if (top === 'Root') return defs.join('\n\n');
+    return defs.join('\n\n') + (defs.length ? '\n\n' : '') + 'type Root = ' + top + ';';
+  }
+
+  function doGenerateTs() {
+    var r = parseInput();
+    if (!r) return;
+    var ts = generateTs(r.value);
+    showOutput(ts, { mode: 'ts', download: 'types.ts', stats: 'TypeScript 类型' });
+    detailStats.textContent = '已生成类型定义';
+    setStatus('ok', '已生成 TypeScript 类型，可复制或下载');
+  }
+
+  /* ---------- 转义 / 去转义 ---------- */
+  function doEscape() {
+    var text = input.value;
+    if (!text.trim()) { showToast('输入为空，先粘贴内容'); return; }
+    showOutput(JSON.stringify(text), { mode: 'text', download: 'escaped.txt', stats: '已转义' });
+    setStatus('ok', '已转义为 JSON 字符串');
+  }
+
+  function doUnescape() {
+    var text = input.value;
+    if (!text.trim()) { showToast('输入为空，先粘贴内容'); return; }
+    try {
+      var v = JSON.parse(text);
+      if (typeof v !== 'string') { showToast('输入不是一个 JSON 字符串'); return; }
+      showOutput(v, { mode: 'text', download: 'unescaped.txt', stats: '已还原' });
+      setStatus('ok', '已还原转义字符串');
+    } catch (e) {
+      setStatus('err', '去转义失败：' + e.message);
+    }
+  }
+
+  /* ---------- 分享链接 ---------- */
+  function toBase64Url(str) {
+    var bytes = new TextEncoder().encode(str);
+    var bin = '';
+    bytes.forEach(function (b) { bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function fromBase64Url(s) {
+    var b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+
+  function doShare() {
+    var data = lastFormatted || input.value;
+    if (!data.trim()) { showToast('没有可分享的内容，先格式化一次'); return; }
+    var url = location.origin + location.pathname + '#j=' + toBase64Url(data);
+    copyText(url);
+    showToast('分享链接已复制，打开即是这份数据');
+  }
+
+  function loadFromHash() {
+    var h = location.hash;
+    if (h.indexOf('#j=') === 0) {
+      try {
+        var text = fromBase64Url(h.slice(3));
+        input.value = text;
+        updateGutter();
+        doFormat();
+        setStatus('ok', '已从分享链接载入数据');
+      } catch (e) {
+        setStatus('warn', '分享链接解析失败');
+      }
+    }
+  }
+
+  /* ---------- 历史记录 ---------- */
+  function loadHistory() {
+    try {
+      var raw = localStorage.getItem('json-wb-history');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+
+  function renderHistory() {
+    var sel = $('historySelect');
+    var items = loadHistory();
+    sel.innerHTML = '<option value="">最近的输入…</option>';
+    items.forEach(function (item, idx) {
+      var opt = document.createElement('option');
+      opt.value = String(idx);
+      var label = item.replace(/\s+/g, ' ').slice(0, 40);
+      opt.textContent = label + (item.length > 40 ? '…' : '');
+      sel.appendChild(opt);
+    });
+  }
+
+  function saveHistory(text) {
+    if (!text || !text.trim() || text.length > 200000) return;
+    try {
+      var items = loadHistory().filter(function (t) { return t !== text; });
+      items.unshift(text);
+      localStorage.setItem('json-wb-history', JSON.stringify(items.slice(0, 5)));
+      renderHistory();
+    } catch (e) {}
+  }
+
+  $('historySelect').addEventListener('change', function () {
+    var idx = this.value;
+    if (idx === '') return;
+    var items = loadHistory();
+    var text = items[Number(idx)];
+    if (text !== undefined) {
+      input.value = text;
+      updateGutter();
+      doFormat();
+    }
+    this.value = '';
+  });
 
   /* ---------- 输入框行号 ---------- */
   function updateGutter() {
@@ -298,10 +722,10 @@
     var blob = new Blob([lastFormatted], { type: 'application/json;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'formatted.json';
+    a.download = lastDownloadName;
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    showToast('已下载 formatted.json');
+    showToast('已下载 ' + lastDownloadName);
   }
 
   /* ---------- 示例 ---------- */
@@ -319,6 +743,19 @@
   $('btnFormat').addEventListener('click', doFormat);
   $('btnMinify').addEventListener('click', doMinify);
   $('btnValidate').addEventListener('click', doValidate);
+  $('btnRepair').addEventListener('click', doRepair);
+  $('btnJsonPath').addEventListener('click', doJsonPath);
+  $('jsonpathInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doJsonPath();
+  });
+  $('btnJpClose').addEventListener('click', function () {
+    $('jpResults').hidden = true;
+    $('jsonpathCount').textContent = '';
+  });
+  $('btnTs').addEventListener('click', doGenerateTs);
+  $('btnEscape').addEventListener('click', doEscape);
+  $('btnUnescape').addEventListener('click', doUnescape);
+  $('btnShare').addEventListener('click', doShare);
   $('viewCode').addEventListener('click', function () { setView('code'); });
   $('viewTree').addEventListener('click', function () {
     if (lastValue === null) { showToast('先格式化或验证一次，再看树形视图'); return; }
@@ -335,6 +772,8 @@
     input.value = '';
     lastValue = null;
     lastFormatted = '';
+    outputMode = 'json';
+    lastDownloadName = 'formatted.json';
     output.innerHTML = '<code>格式化后的 JSON 会显示在这里。</code>';
     tree.innerHTML = '';
     outputStats.textContent = '等待输入';
@@ -410,5 +849,14 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doFormat(); }
   });
 
-  updateGutter();
+  /* ---------- 初始化 ---------- */
+  (function init() {
+    var theme = 'dark';
+    try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
+    applyTheme(theme);
+    initResizer();
+    renderHistory();
+    updateGutter();
+    loadFromHash();
+  })();
 })();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,6 +21,7 @@
     <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
     <button class="btn ghost" id="btnPaste">粘贴剪贴板</button>
     <button class="btn ghost" id="btnClear">清空</button>
+    <button class="btn ghost" id="btnTheme" title="切换明暗主题">☀️ 浅色</button>
   </div>
 </header>
 
@@ -29,6 +30,7 @@
     <button class="btn primary" id="btnFormat">格式化</button>
     <button class="btn" id="btnMinify">压缩</button>
     <button class="btn" id="btnValidate">验证</button>
+    <button class="btn" id="btnRepair" title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释">修复 JSON</button>
   </div>
   <div class="group options">
     <label>缩进
@@ -47,12 +49,41 @@
       <button class="seg-btn" id="viewTree" role="tab">树形</button>
     </div>
     <button class="btn" id="btnCopy">复制结果</button>
-    <button class="btn" id="btnDownload">下载 .json</button>
+    <button class="btn" id="btnDownload">下载</button>
   </div>
 </section>
 
-<main class="panes">
-  <section class="pane">
+<section class="toolbar secondary">
+  <div class="group jp-group">
+    <label class="jp-label" for="jsonpathInput">JSONPath</label>
+    <input type="text" id="jsonpathInput" placeholder="$.store.book[0].title 或 $..price" spellcheck="false">
+    <button class="btn" id="btnJsonPath">查询</button>
+    <span class="hint" id="jsonpathCount"></span>
+  </div>
+  <div class="group">
+    <button class="btn" id="btnTs" title="根据当前 JSON 推断 TypeScript 类型">生成 TS 类型</button>
+    <button class="btn" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
+    <button class="btn" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
+    <button class="btn" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
+  </div>
+  <div class="group">
+    <label class="hist-label" for="historySelect">历史</label>
+    <select id="historySelect">
+      <option value="">最近的输入…</option>
+    </select>
+  </div>
+</section>
+
+<section class="jp-results" id="jpResults" hidden>
+  <div class="jp-results-head">
+    <span>查询结果 <span class="hint" id="jpResultsCount"></span></span>
+    <button class="btn ghost small" id="btnJpClose">关闭</button>
+  </div>
+  <div class="jp-results-body" id="jpResultsBody"></div>
+</section>
+
+<main class="panes" id="panes">
+  <section class="pane pane-left" id="paneLeft">
     <div class="pane-head">
       <span>输入</span>
       <span class="hint" id="inputStats">0 字符</span>
@@ -63,7 +94,9 @@
     </div>
   </section>
 
-  <section class="pane">
+  <div class="divider" id="divider" title="拖动调整左右宽度"></div>
+
+  <section class="pane pane-right" id="paneRight">
     <div class="pane-head">
       <span>输出</span>
       <span class="hint" id="outputStats">等待输入</span>
