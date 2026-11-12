@@ -416,12 +416,34 @@ html[data-theme="oracle"] {
 }
 html[data-theme="oracle"] .logo { background: linear-gradient(135deg, #c74634, #7a1f16); }
 
-/* ---------- DataGrip 主题（Darcula） ---------- */
+/* ---------- Oracle 白主题 ---------- */
+html[data-theme="oracle-light"] {
+  --bg: #f2f2f0;
+  --panel: #ffffff;
+  --panel-2: #f0efec;
+  --border: #dcd9d2;
+  --text: #1c1a17;
+  --muted: #7a756c;
+  --accent: #c74634;
+  --accent-hover: #a83a2c;
+  --green: #3f7d4e;
+  --red: #d23c28;
+  --amber: #a06a1c;
+  --key: #9c3d1e;
+  --string: #3f7d4e;
+  --number: #a06a1c;
+  --bool: #7a4a8a;
+  --null: #d23c28;
+}
+html[data-theme="oracle-light"] .logo { background: linear-gradient(135deg, #c74634, #e07a5f); }
+html[data-theme="oracle-light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
+
+/* ---------- DataGrip 主题（Darcula，加深） ---------- */
 html[data-theme="datagrip"] {
-  --bg: #2b2b2b;
-  --panel: #313335;
-  --panel-2: #3c3f41;
-  --border: #4a4d4f;
+  --bg: #1e1e1e;
+  --panel: #232324;
+  --panel-2: #2c2c2e;
+  --border: #3d3d40;
   --text: #a9b7c6;
   --muted: #808080;
   --accent: #3d7ab8;
@@ -446,4 +468,75 @@ html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8,
   border-radius: 6px;
   padding: 7px 8px;
   font-size: 13px;
+}
+
+/* ---------- 类型生成下拉 ---------- */
+.type-label { color: var(--muted); font-size: 13px; white-space: nowrap; }
+#typeLang {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+/* ---------- 对比面板 ---------- */
+.diff-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  padding: 12px 20px;
+}
+.diff-panel[hidden] { display: none; }
+.diff-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.diff-panel-head .hint { font-weight: 400; }
+.diff-panel-head .btn { margin-left: auto; }
+#diffInput {
+  width: 100%;
+  height: 110px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  outline: 0;
+}
+#diffInput:focus { border-color: var(--accent); }
+.diff-panel-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+
+/* ---------- 对比结果 ---------- */
+.diff-view {
+  padding: 14px;
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: auto;
+  min-height: 100%;
+}
+.diff-view[hidden] { display: none; }
+.diff-row { padding: 1px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+.diff-row.diff-add { background: rgba(63, 206, 143, .16); }
+.diff-row.diff-del { background: rgba(255, 107, 107, .16); }
+.diff-row.diff-same { color: var(--muted); }
+
+/* ---------- 状态栏提示 ---------- */
+.footer-hint { color: var(--muted); font-size: 12px; margin-right: 16px; }
+@media (max-width: 820px) { .footer-hint { display: none; } }
+
+/* ---------- 键盘焦点可见 ---------- */
+.btn:focus-visible, .seg-btn:focus-visible, select:focus-visible,
+input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

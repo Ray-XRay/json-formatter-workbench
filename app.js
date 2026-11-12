@@ -262,17 +262,25 @@
     currentView = view;
     $('viewCode').classList.toggle('active', view === 'code');
     $('viewTree').classList.toggle('active', view === 'tree');
+    $('diffView').hidden = true;
     output.hidden = view !== 'code';
     tree.hidden = view !== 'tree';
     if (view === 'tree') renderTreeView();
   }
 
   /* ---------- 输出显示 ---------- */
+  function hideDiff() {
+    $('diffView').hidden = true;
+    if (currentView === 'code') output.hidden = false;
+    else tree.hidden = false;
+  }
+
   function showOutput(text, opts) {
     opts = opts || {};
     outputMode = opts.mode || 'json';
     lastFormatted = text;
     lastDownloadName = opts.download || 'formatted.json';
+    hideDiff();
     if (outputMode === 'json') {
       output.innerHTML = '<code>' + highlight(text) + '</code>';
     } else {
@@ -571,13 +579,314 @@
     return defs.join('\n\n') + (defs.length ? '\n\n' : '') + 'type Root = ' + top + ';';
   }
 
-  function doGenerateTs() {
+  function doGenerateType() {
     var r = parseInput();
     if (!r) return;
-    var ts = generateTs(r.value);
-    showOutput(ts, { mode: 'ts', download: 'types.ts', stats: 'TypeScript 类型' });
-    detailStats.textContent = '已生成类型定义';
-    setStatus('ok', '已生成 TypeScript 类型，可复制或下载');
+    var lang = $('typeLang').value;
+    if (lang === 'go') {
+      var go = generateGo(r.value);
+      showOutput(go, { mode: 'go', download: 'types.go', stats: 'Go 结构体' });
+      detailStats.textContent = '已生成 Go struct';
+      setStatus('ok', '已生成 Go 结构体，可复制或下载');
+    } else if (lang === 'py') {
+      var py = generatePy(r.value);
+      showOutput(py, { mode: 'py', download: 'models.py', stats: 'Python dataclass' });
+      detailStats.textContent = '已生成 Python dataclass';
+      setStatus('ok', '已生成 Python dataclass，可复制或下载');
+    } else {
+      var ts = generateTs(r.value);
+      showOutput(ts, { mode: 'ts', download: 'types.ts', stats: 'TypeScript 类型' });
+      detailStats.textContent = '已生成类型定义';
+      setStatus('ok', '已生成 TypeScript 类型，可复制或下载');
+    }
+  }
+
+  /* ---------- 生成 Go 结构体 ---------- */
+  function goPascal(raw) {
+    var parts = String(raw).split(/[^A-Za-z0-9]+/).filter(Boolean);
+    var s = parts.map(function (p) { return p.charAt(0).toUpperCase() + p.slice(1); }).join('');
+    if (!s) s = 'Field';
+    if (/^\d/.test(s)) s = 'N' + s;
+    return s;
+  }
+
+  function generateGo(root) {
+    var defs = [];
+    var used = {};
+    function uniqueName(base) {
+      var name = base, i = 2;
+      while (used[name]) { name = base + i; i++; }
+      used[name] = true;
+      return name;
+    }
+    function infer(v, name) {
+      if (v === null) return 'interface{}';
+      if (Array.isArray(v)) {
+        if (v.length === 0) return '[]interface{}';
+        var ts = [];
+        v.forEach(function (el) {
+          var t = infer(el, name + 'Item');
+          if (ts.indexOf(t) === -1) ts.push(t);
+        });
+        return ts.length === 1 ? '[]' + ts[0] : '[]interface{}';
+      }
+      if (typeof v === 'object') {
+        var st = uniqueName(name);
+        var lines = Object.keys(v).map(function (k) {
+          return '  ' + goPascal(k) + ' ' + infer(v[k], st + goPascal(k)) + ' `json:"' + k + '"`';
+        });
+        defs.push('type ' + st + ' struct {\n' + lines.join('\n') + '\n}');
+        return st;
+      }
+      if (typeof v === 'string') return 'string';
+      if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'float64';
+      if (typeof v === 'boolean') return 'bool';
+      return 'interface{}';
+    }
+    function inferArrayOfObjects(arr, name) {
+      var allKeys = [];
+      arr.forEach(function (el) {
+        if (el && typeof el === 'object' && !Array.isArray(el)) {
+          Object.keys(el).forEach(function (k) { if (allKeys.indexOf(k) === -1) allKeys.push(k); });
+        }
+      });
+      var st = uniqueName(name);
+      var lines = allKeys.map(function (k) {
+        var present = 0, t = 'interface{}';
+        arr.forEach(function (el) {
+          if (el && typeof el === 'object' && k in el) {
+            present++;
+            if (t === 'interface{}') t = infer(el[k], st + goPascal(k));
+          }
+        });
+        if (present < arr.length) t = '*' + t;
+        return '  ' + goPascal(k) + ' ' + t + ' `json:"' + k + '"`';
+      });
+      defs.push('type ' + st + ' struct {\n' + lines.join('\n') + '\n}');
+      return st;
+    }
+    var top;
+    if (Array.isArray(root) && root.length > 0 && root.every(function (el) { return el && typeof el === 'object' && !Array.isArray(el); })) {
+      var item = inferArrayOfObjects(root, 'Item');
+      return 'package main\n\n' + defs.join('\n\n') + '\n\ntype Root []' + item + '\n';
+    }
+    top = infer(root, 'Root');
+    if (top === 'Root') return 'package main\n\n' + defs.join('\n\n');
+    return 'package main\n\n' + defs.join('\n\n') + (defs.length ? '\n\n' : '') + 'type Root ' + top + '\n';
+  }
+
+  /* ---------- 生成 Python dataclass ---------- */
+  function pyClassName(raw) {
+    var parts = String(raw).split(/[^A-Za-z0-9]+/).filter(Boolean);
+    var s = parts.map(function (p) { return p.charAt(0).toUpperCase() + p.slice(1); }).join('');
+    if (!s) s = 'Item';
+    if (/^\d/.test(s)) s = '_' + s;
+    return s;
+  }
+
+  function pyFieldName(raw) {
+    var s = String(raw).replace(/[^A-Za-z0-9_]/g, '_');
+    if (/^\d/.test(s)) s = '_' + s;
+    if (!s) s = 'field';
+    return s;
+  }
+
+  function generatePy(root) {
+    var defs = [];
+    var used = {};
+    var needs = { List: false, Optional: false, Any: false };
+    function uniqueName(base) {
+      var name = base, i = 2;
+      while (used[name]) { name = base + i; i++; }
+      used[name] = true;
+      return name;
+    }
+    function infer(v, name) {
+      if (v === null) { needs.Any = true; return 'Any'; }
+      if (Array.isArray(v)) {
+        needs.List = true;
+        if (v.length === 0) { needs.Any = true; return 'List[Any]'; }
+        var ts = [];
+        v.forEach(function (el) {
+          var t = infer(el, name + 'Item');
+          if (ts.indexOf(t) === -1) ts.push(t);
+        });
+        return ts.length === 1 ? 'List[' + ts[0] + ']' : 'List[Any]';
+      }
+      if (typeof v === 'object') {
+        var cls = uniqueName(name);
+        var keys = Object.keys(v);
+        var lines = keys.map(function (k) {
+          return '    ' + pyFieldName(k) + ': ' + infer(v[k], cls + pyClassName(k));
+        });
+        if (lines.length === 0) lines.push('    pass');
+        defs.push('@dataclass\nclass ' + cls + ':\n' + lines.join('\n'));
+        return cls;
+      }
+      if (typeof v === 'string') return 'str';
+      if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'float';
+      if (typeof v === 'boolean') return 'bool';
+      needs.Any = true; return 'Any';
+    }
+    function inferArrayOfObjects(arr, name) {
+      var allKeys = [];
+      arr.forEach(function (el) {
+        if (el && typeof el === 'object' && !Array.isArray(el)) {
+          Object.keys(el).forEach(function (k) { if (allKeys.indexOf(k) === -1) allKeys.push(k); });
+        }
+      });
+      var cls = uniqueName(name);
+      var lines = allKeys.map(function (k) {
+        var present = 0, t = 'Any';
+        arr.forEach(function (el) {
+          if (el && typeof el === 'object' && k in el) {
+            present++;
+            if (t === 'Any') t = infer(el[k], cls + pyClassName(k));
+          }
+        });
+        if (t === 'Any') needs.Any = true;
+        if (present < arr.length) { needs.Optional = true; t = 'Optional[' + t + ']'; }
+        return '    ' + pyFieldName(k) + ': ' + t;
+      });
+      if (lines.length === 0) lines.push('    pass');
+      defs.push('@dataclass\nclass ' + cls + ':\n' + lines.join('\n'));
+      return cls;
+    }
+    var header = 'from dataclasses import dataclass\n';
+    var typing = [];
+    var tail = '';
+    if (Array.isArray(root) && root.length > 0 && root.every(function (el) { return el && typeof el === 'object' && !Array.isArray(el); })) {
+      var item = inferArrayOfObjects(root, 'Item');
+      if (needs.List) typing.push('List');
+      if (needs.Optional) typing.push('Optional');
+      if (needs.Any) typing.push('Any');
+      if (typing.length) header += 'from typing import ' + typing.join(', ') + '\n';
+      return header + '\n' + defs.join('\n\n') + '\n\nRoot = List[' + item + ']\n';
+    }
+    var top = infer(root, 'Root');
+    if (needs.List) typing.push('List');
+    if (needs.Optional) typing.push('Optional');
+    if (needs.Any) typing.push('Any');
+    if (typing.length) header += 'from typing import ' + typing.join(', ') + '\n';
+    if (top === 'Root') return header + '\n' + defs.join('\n\n') + '\n';
+    return header + '\n' + defs.join('\n\n') + (defs.length ? '\n\n' : '') + 'Root = ' + top + '\n';
+  }
+
+  /* ---------- 转 YAML ---------- */
+  function yamlScalar(v) {
+    if (v === null) return 'null';
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'number') return String(v);
+    var s = String(v);
+    if (s === '' || /^\s|\s$/.test(s) || /^(true|false|null|~|yes|no|on|off)$/i.test(s) ||
+        /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s) || /[:#{}[\],&*?|>'"%@`!]/.test(s) || s.indexOf('\n') !== -1) {
+      return JSON.stringify(s);
+    }
+    return s;
+  }
+
+  function yamlKey(k) {
+    return (/[:#{}[\],&*?|>'"%@`!]/.test(k) || /^\s|\s$/.test(k) || k === '') ? JSON.stringify(k) : k;
+  }
+
+  function toYamlLines(v, indent) {
+    var pad = '  '.repeat(indent);
+    if (Array.isArray(v)) {
+      if (v.length === 0) return [pad + '[]'];
+      var lines = [];
+      v.forEach(function (el) {
+        if (el && typeof el === 'object') {
+          var sub = toYamlLines(el, indent + 1);
+          lines.push(pad + '- ' + sub[0].slice((indent + 1) * 2));
+          for (var i = 1; i < sub.length; i++) lines.push(sub[i]);
+        } else {
+          lines.push(pad + '- ' + yamlScalar(el));
+        }
+      });
+      return lines;
+    }
+    if (v && typeof v === 'object') {
+      var keys = Object.keys(v);
+      if (keys.length === 0) return [pad + '{}'];
+      var out = [];
+      keys.forEach(function (k) {
+        var val = v[k];
+        var key = yamlKey(k);
+        if (val && typeof val === 'object') {
+          if (Array.isArray(val) && val.length === 0) out.push(pad + key + ': []');
+          else if (!Array.isArray(val) && Object.keys(val).length === 0) out.push(pad + key + ': {}');
+          else {
+            out.push(pad + key + ':');
+            out = out.concat(toYamlLines(val, indent + 1));
+          }
+        } else {
+          out.push(pad + key + ': ' + yamlScalar(val));
+        }
+      });
+      return out;
+    }
+    return [pad + yamlScalar(v)];
+  }
+
+  function doYaml() {
+    var r = parseInput();
+    if (!r) return;
+    var yaml = toYamlLines(r.value, 0).join('\n');
+    showOutput(yaml, { mode: 'yaml', download: 'data.yaml', stats: 'YAML' });
+    detailStats.textContent = '已转为 YAML';
+    setStatus('ok', '已转为 YAML，可复制或下载');
+  }
+
+  /* ---------- JSON 对比 ---------- */
+  function diffLines(aLines, bLines) {
+    var n = aLines.length, m = bLines.length;
+    var dp = [];
+    for (var i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
+    for (var i = n - 1; i >= 0; i--) {
+      for (var j = m - 1; j >= 0; j--) {
+        dp[i][j] = aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    var ops = [], i = 0, j = 0;
+    while (i < n && j < m) {
+      if (aLines[i] === bLines[j]) { ops.push({ t: 'same', line: aLines[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ t: 'del', line: aLines[i] }); i++; }
+      else { ops.push({ t: 'add', line: bLines[j] }); j++; }
+    }
+    while (i < n) { ops.push({ t: 'del', line: aLines[i] }); i++; }
+    while (j < m) { ops.push({ t: 'add', line: bLines[j] }); j++; }
+    return ops;
+  }
+
+  function doDiff() {
+    var r = parseInput();
+    if (!r) return;
+    var otherText = $('diffInput').value;
+    if (!otherText.trim()) { showToast('请在对比框里粘贴第二份 JSON'); return; }
+    var other;
+    try { other = JSON.parse(otherText); } catch (e) {
+      setStatus('err', '第二份 JSON 无效：' + e.message);
+      return;
+    }
+    var a = JSON.stringify($('sortKeys').checked ? sortDeep(r.value) : r.value, null, getIndent()).split('\n');
+    var b = JSON.stringify($('sortKeys').checked ? sortDeep(other) : other, null, getIndent()).split('\n');
+    if (a.length > 2000 || b.length > 2000) { showToast('文件太大，单份请控制在 2000 行以内'); return; }
+    var ops = diffLines(a, b);
+    var add = 0, del = 0;
+    ops.forEach(function (o) { if (o.t === 'add') add++; else if (o.t === 'del') del++; });
+    var view = $('diffView');
+    view.innerHTML = '';
+    ops.forEach(function (o) {
+      var row = document.createElement('div');
+      row.className = 'diff-row diff-' + o.t;
+      row.textContent = (o.t === 'add' ? '+ ' : o.t === 'del' ? '− ' : '  ') + o.line;
+      view.appendChild(row);
+    });
+    view.hidden = false;
+    output.hidden = true;
+    tree.hidden = true;
+    $('diffStats').textContent = '新增 ' + add + ' 行 · 删除 ' + del + ' 行 · 相同 ' + (ops.length - add - del) + ' 行';
+    setStatus('ok', '对比完成：新增 ' + add + ' 行，删除 ' + del + ' 行');
   }
 
   /* ---------- 转义 / 去转义 ---------- */
@@ -752,7 +1061,14 @@
     $('jpResults').hidden = true;
     $('jsonpathCount').textContent = '';
   });
-  $('btnTs').addEventListener('click', doGenerateTs);
+  $('btnGenType').addEventListener('click', doGenerateType);
+  $('btnYaml').addEventListener('click', doYaml);
+  $('btnDiff').addEventListener('click', function () {
+    $('diffPanel').hidden = false;
+    $('diffInput').focus();
+  });
+  $('btnDiffClose').addEventListener('click', function () { $('diffPanel').hidden = true; });
+  $('btnDoDiff').addEventListener('click', doDiff);
   $('btnEscape').addEventListener('click', doEscape);
   $('btnUnescape').addEventListener('click', doUnescape);
   $('btnShare').addEventListener('click', doShare);

@@ -27,6 +27,7 @@
         <option value="light">浅色</option>
         <option value="retro">复古</option>
         <option value="oracle">Oracle</option>
+        <option value="oracle-light">Oracle 白</option>
         <option value="datagrip">DataGrip</option>
       </select>
     </label>
@@ -69,7 +70,15 @@
     <span class="hint" id="jsonpathCount"></span>
   </div>
   <div class="group">
-    <button class="btn" id="btnTs" title="根据当前 JSON 推断 TypeScript 类型">生成 TS 类型</button>
+    <label class="type-label" for="typeLang">生成类型</label>
+    <select id="typeLang">
+      <option value="ts" selected>TypeScript</option>
+      <option value="go">Go</option>
+      <option value="py">Python</option>
+    </select>
+    <button class="btn" id="btnGenType" title="根据当前 JSON 生成所选语言的类型定义">生成</button>
+    <button class="btn" id="btnYaml" title="把当前 JSON 转成 YAML">转 YAML</button>
+    <button class="btn" id="btnDiff" title="与第二份 JSON 逐行对比差异">对比 JSON</button>
     <button class="btn" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
     <button class="btn" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
     <button class="btn" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
@@ -88,6 +97,19 @@
     <button class="btn ghost small" id="btnJpClose">关闭</button>
   </div>
   <div class="jp-results-body" id="jpResultsBody"></div>
+</section>
+
+<section class="diff-panel" id="diffPanel" hidden>
+  <div class="diff-panel-head">
+    <span>对比 JSON</span>
+    <span class="hint">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
+    <button class="btn ghost small" id="btnDiffClose">关闭</button>
+  </div>
+  <textarea id="diffInput" placeholder="粘贴第二份 JSON…" spellcheck="false"></textarea>
+  <div class="diff-panel-actions">
+    <button class="btn primary" id="btnDoDiff">开始对比</button>
+    <span class="hint" id="diffStats"></span>
+  </div>
 </section>
 
 <main class="panes" id="panes">
@@ -112,6 +134,7 @@
     <div class="output-wrap">
       <pre id="output" class="code-view"><code>格式化后的 JSON 会显示在这里。</code></pre>
       <div id="tree" class="tree-view" hidden></div>
+      <div id="diffView" class="diff-view" hidden></div>
     </div>
   </section>
 </main>
@@ -120,6 +143,7 @@
   <span id="statusDot" class="dot idle"></span>
   <span id="statusText">就绪</span>
   <span class="spacer"></span>
+  <span class="footer-hint">Ctrl+Enter 格式化 · 拖动中间分隔条调整宽度</span>
   <span id="detailStats"></span>
 </footer>
 
