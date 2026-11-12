@@ -1061,17 +1061,44 @@
     $('jpResults').hidden = true;
     $('jsonpathCount').textContent = '';
   });
-  $('btnGenType').addEventListener('click', doGenerateType);
-  $('btnYaml').addEventListener('click', doYaml);
+  /* ---------- 更多工具下拉菜单 ---------- */
+  function closeMore() {
+    $('moreMenu').hidden = true;
+    $('btnMore').setAttribute('aria-expanded', 'false');
+  }
+
+  $('btnMore').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var menu = $('moreMenu');
+    menu.hidden = !menu.hidden;
+    $('btnMore').setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', function (e) {
+    if (!$('moreMenu').hidden && !e.target.closest('.more-wrap')) closeMore();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeMore();
+  });
+
+  /* ---------- JSONPath 栏开关 ---------- */
+  $('btnJpToggle').addEventListener('click', function () {
+    var bar = $('jpBar');
+    bar.hidden = !bar.hidden;
+    if (!bar.hidden) $('jsonpathInput').focus();
+  });
+
+  $('btnGenType').addEventListener('click', function () { doGenerateType(); closeMore(); });
+  $('btnYaml').addEventListener('click', function () { doYaml(); closeMore(); });
   $('btnDiff').addEventListener('click', function () {
     $('diffPanel').hidden = false;
     $('diffInput').focus();
+    closeMore();
   });
   $('btnDiffClose').addEventListener('click', function () { $('diffPanel').hidden = true; });
   $('btnDoDiff').addEventListener('click', doDiff);
-  $('btnEscape').addEventListener('click', doEscape);
-  $('btnUnescape').addEventListener('click', doUnescape);
-  $('btnShare').addEventListener('click', doShare);
+  $('btnEscape').addEventListener('click', function () { doEscape(); closeMore(); });
+  $('btnUnescape').addEventListener('click', function () { doUnescape(); closeMore(); });
+  $('btnShare').addEventListener('click', function () { doShare(); closeMore(); });
   $('viewCode').addEventListener('click', function () { setView('code'); });
   $('viewTree').addEventListener('click', function () {
     if (lastValue === null) { showToast('先格式化或验证一次，再看树形视图'); return; }

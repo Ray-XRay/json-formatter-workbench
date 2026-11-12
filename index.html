@@ -12,15 +12,10 @@
     <span class="logo">{ }</span>
     <div>
       <h1>JSON 格式化工作台</h1>
-      <p>粘贴、格式化、压缩、验证、树形浏览，一站搞定</p>
+      <p>粘贴 · 格式化 · 验证 · 查询</p>
     </div>
   </div>
   <div class="top-actions">
-    <button class="btn ghost" id="btnSample">载入示例</button>
-    <button class="btn ghost" id="btnUpload">打开文件</button>
-    <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
-    <button class="btn ghost" id="btnPaste">粘贴剪贴板</button>
-    <button class="btn ghost" id="btnClear">清空</button>
     <label class="theme-label">主题
       <select id="themeSelect">
         <option value="dark" selected>深色</option>
@@ -53,6 +48,35 @@
     <label class="check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
   </div>
   <div class="group">
+    <button class="btn" id="btnJpToggle" title="展开 JSONPath 查询栏">JSONPath</button>
+    <div class="more-wrap">
+      <button class="btn" id="btnMore" aria-expanded="false" title="更多工具：生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
+      <div class="more-menu" id="moreMenu" hidden>
+        <div class="menu-row">
+          <span class="menu-label">生成类型</span>
+          <select id="typeLang">
+            <option value="ts" selected>TypeScript</option>
+            <option value="go">Go</option>
+            <option value="py">Python</option>
+          </select>
+          <button class="btn small" id="btnGenType" title="根据当前 JSON 生成所选语言的类型定义">生成</button>
+        </div>
+        <button class="menu-item" id="btnYaml" title="把当前 JSON 转成 YAML">转 YAML</button>
+        <button class="menu-item" id="btnDiff" title="与第二份 JSON 逐行对比差异">对比 JSON</button>
+        <button class="menu-item" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
+        <button class="menu-item" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
+        <button class="menu-item" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
+        <div class="menu-row">
+          <span class="menu-label">历史</span>
+          <select id="historySelect">
+            <option value="">最近的输入…</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+  <span class="spacer"></span>
+  <div class="group">
     <div class="seg" role="tablist" aria-label="输出视图">
       <button class="seg-btn active" id="viewCode" role="tab">代码</button>
       <button class="seg-btn" id="viewTree" role="tab">树形</button>
@@ -62,32 +86,12 @@
   </div>
 </section>
 
-<section class="toolbar secondary">
+<section class="toolbar secondary" id="jpBar" hidden>
   <div class="group jp-group">
     <label class="jp-label" for="jsonpathInput">JSONPath</label>
     <input type="text" id="jsonpathInput" placeholder="$.store.book[0].title 或 $..price" spellcheck="false">
     <button class="btn" id="btnJsonPath">查询</button>
     <span class="hint" id="jsonpathCount"></span>
-  </div>
-  <div class="group">
-    <label class="type-label" for="typeLang">生成类型</label>
-    <select id="typeLang">
-      <option value="ts" selected>TypeScript</option>
-      <option value="go">Go</option>
-      <option value="py">Python</option>
-    </select>
-    <button class="btn" id="btnGenType" title="根据当前 JSON 生成所选语言的类型定义">生成</button>
-    <button class="btn" id="btnYaml" title="把当前 JSON 转成 YAML">转 YAML</button>
-    <button class="btn" id="btnDiff" title="与第二份 JSON 逐行对比差异">对比 JSON</button>
-    <button class="btn" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
-    <button class="btn" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
-    <button class="btn" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
-  </div>
-  <div class="group">
-    <label class="hist-label" for="historySelect">历史</label>
-    <select id="historySelect">
-      <option value="">最近的输入…</option>
-    </select>
   </div>
 </section>
 
@@ -116,6 +120,12 @@
   <section class="pane pane-left" id="paneLeft">
     <div class="pane-head">
       <span>输入</span>
+      <span class="spacer"></span>
+      <button class="btn ghost small" id="btnSample">载入示例</button>
+      <button class="btn ghost small" id="btnUpload">打开文件</button>
+      <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
+      <button class="btn ghost small" id="btnPaste">粘贴剪贴板</button>
+      <button class="btn ghost small" id="btnClear">清空</button>
       <span class="hint" id="inputStats">0 字符</span>
     </div>
     <div class="editor-wrap">
