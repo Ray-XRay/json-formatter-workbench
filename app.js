@@ -49,13 +49,13 @@
   /* ---------- 主题 ---------- */
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    $('btnTheme').textContent = theme === 'light' ? '🌙 深色' : '☀️ 浅色';
+    var sel = $('themeSelect');
+    if (sel) sel.value = theme;
     try { localStorage.setItem('json-wb-theme', theme); } catch (e) {}
   }
 
-  $('btnTheme').addEventListener('click', function () {
-    var cur = document.documentElement.getAttribute('data-theme');
-    applyTheme(cur === 'light' ? 'dark' : 'light');
+  $('themeSelect').addEventListener('change', function () {
+    applyTheme(this.value);
   });
 
   /* ---------- 可拖动分隔条 ---------- */

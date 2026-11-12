@@ -21,7 +21,15 @@
     <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
     <button class="btn ghost" id="btnPaste">粘贴剪贴板</button>
     <button class="btn ghost" id="btnClear">清空</button>
-    <button class="btn ghost" id="btnTheme" title="切换明暗主题">☀️ 浅色</button>
+    <label class="theme-label">主题
+      <select id="themeSelect">
+        <option value="dark" selected>深色</option>
+        <option value="light">浅色</option>
+        <option value="retro">复古</option>
+        <option value="oracle">Oracle</option>
+        <option value="datagrip">DataGrip</option>
+      </select>
+    </label>
   </div>
 </header>
 

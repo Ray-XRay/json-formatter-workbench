@@ -371,3 +371,79 @@ html[data-theme="light"] {
 }
 html[data-theme="light"] .logo { color: #fff; }
 html[data-theme="light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
+
+/* ---------- 复古主题 ---------- */
+html[data-theme="retro"] {
+  --bg: #ece5d3;
+  --panel: #f6f0dd;
+  --panel-2: #e9e0c6;
+  --border: #d3c5a0;
+  --text: #3d3129;
+  --muted: #8a7a63;
+  --accent: #a85438;
+  --accent-hover: #93452d;
+  --green: #5d7d4f;
+  --red: #b3402e;
+  --amber: #a06a1c;
+  --key: #7a5c2e;
+  --string: #4f7a4a;
+  --number: #a06a1c;
+  --bool: #7a4a8a;
+  --null: #b3402e;
+}
+html[data-theme="retro"] .logo { background: linear-gradient(135deg, #a85438, #c98a3d); }
+html[data-theme="retro"] .toast { background: #f6f0dd; box-shadow: 0 6px 24px rgba(61, 49, 41, .25); }
+html[data-theme="retro"] body { font-family: Georgia, "Songti SC", "SimSun", serif; }
+
+/* ---------- Oracle 主题 ---------- */
+html[data-theme="oracle"] {
+  --bg: #0d0d0f;
+  --panel: #17171b;
+  --panel-2: #201f24;
+  --border: #322f33;
+  --text: #f0ede8;
+  --muted: #9a938a;
+  --accent: #c74634;
+  --accent-hover: #a83a2c;
+  --green: #7ec98a;
+  --red: #ff6b5e;
+  --amber: #e8c15a;
+  --key: #f0a35e;
+  --string: #7ec98a;
+  --number: #e8c15a;
+  --bool: #d18ce0;
+  --null: #ff6b5e;
+}
+html[data-theme="oracle"] .logo { background: linear-gradient(135deg, #c74634, #7a1f16); }
+
+/* ---------- DataGrip 主题（Darcula） ---------- */
+html[data-theme="datagrip"] {
+  --bg: #2b2b2b;
+  --panel: #313335;
+  --panel-2: #3c3f41;
+  --border: #4a4d4f;
+  --text: #a9b7c6;
+  --muted: #808080;
+  --accent: #3d7ab8;
+  --accent-hover: #3570aa;
+  --green: #6a8759;
+  --red: #ff6b68;
+  --amber: #6897bb;
+  --key: #9876aa;
+  --string: #6a8759;
+  --number: #6897bb;
+  --bool: #cc7832;
+  --null: #cc7832;
+}
+html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8, #214283); }
+
+/* ---------- 顶栏主题下拉 ---------- */
+.theme-label { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.theme-label select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
