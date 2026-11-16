@@ -293,6 +293,38 @@
     return out;
   }
 
+  /* ---------- SQL 语法高亮 ---------- */
+  // token 种类复用 JSON 的 class：关键字 k、字符串 s、数字 n、函数 b、
+  // 标点 p；注释另用 c（--muted）。不命中关键字的标识符不包 span。
+  function highlightSql(sql) {
+    var re = /(--[^\n]*)|(\/\*[\s\S]*?\*\/)|('(?:[^']|'')*')|("(?:[^"]|"")*")|(`(?:[^`]|``)*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_$]*)|(\S)/g;
+    var out = '', last = 0, m;
+    while ((m = re.exec(sql))) {
+      out += escapeHtml(sql.slice(last, m.index));
+      if (m[1] !== undefined || m[2] !== undefined) {
+        out += '<span class="c">' + escapeHtml(m[0]) + '</span>';
+      } else if (m[3] !== undefined || m[4] !== undefined || m[5] !== undefined) {
+        out += '<span class="s">' + escapeHtml(m[0]) + '</span>';
+      } else if (m[6] !== undefined) {
+        out += '<span class="n">' + m[0] + '</span>';
+      } else if (m[7] !== undefined) {
+        var w = m[7];
+        if (SQL_KEYWORDS[w.toUpperCase()]) {
+          out += '<span class="k">' + w + '</span>';
+        } else if (/^\s*\(/.test(sql.slice(re.lastIndex))) {
+          out += '<span class="b">' + w + '</span>'; // 函数名：标识符后紧跟 (
+        } else {
+          out += escapeHtml(w);
+        }
+      } else {
+        out += '<span class="p">' + escapeHtml(m[0]) + '</span>';
+      }
+      last = re.lastIndex;
+    }
+    out += escapeHtml(sql.slice(last));
+    return out;
+  }
+
   /* ---------- 树形视图 ---------- */
   function typeLabel(v) {
     if (v === null) return 'null';
@@ -521,6 +553,8 @@
     hideDiff();
     if (outputMode === 'json') {
       output.innerHTML = '<code>' + highlight(text) + '</code>';
+    } else if (outputMode === 'text' && currentLang === 'sql') {
+      output.innerHTML = '<code>' + highlightSql(text) + '</code>';
     } else {
       output.innerHTML = '<code>' + escapeHtml(text) + '</code>';
     }
@@ -1181,9 +1215,47 @@
   }
 
   /* ---------- 多语言分发 ---------- */
+  /* ---------- SQL 真解析器（sql-formatter，本地 vendor） ---------- */
+  // sql-formatter 15.x：format(sql, { language, keywordCase, tabWidth/useTabs })。
+  // 它是格式化器不是严格校验器：SELECT FROM WHERE 这类语义错句它也照
+  // 常格式化，只有放错位置的 token（括号不配对、BETWEEN 缺值等）才会抛
+  // 错；抛错信息自带几十 KB 的文法展开，必须只取首行。
+  var sqlFallbackUsed = false; // 本次格式化是否回退到了轻量版
+  function sqlFormatOpts() {
+    var opts = { language: 'sql', keywordCase: 'upper' };
+    var u = indentString();
+    if (u === '\t') opts.useTabs = true;
+    else opts.tabWidth = u.length;
+    return opts;
+  }
+  function formatSqlReal(text) {
+    return sqlFormatter.format(text, sqlFormatOpts());
+  }
+  function sqlParseError(e) {
+    var msg = (e && e.message) ? e.message : String(e);
+    var first = msg.split('\n')[0];
+    var m = /Parse error at token: (.*?) at line (\d+) column (\d+)/.exec(first);
+    if (m) return 'SQL 语法错误：第 ' + m[2] + ' 行第 ' + m[3] + ' 列附近，意外的 ' + (m[1] || '内容');
+    return 'SQL 语法错误：' + first;
+  }
+
   function formatCode(lang, text) {
     var u = indentString();
-    if (lang === 'sql') return formatSql(text, u);
+    if (lang === 'sql') {
+      sqlFallbackUsed = false;
+      if (typeof sqlFormatter !== 'undefined') {
+        try {
+          return formatSqlReal(text);
+        } catch (e) {
+          // 真解析器拒收（方言语法或语句有误）：回退轻量版照常出结果，
+          // 状态栏会注明是轻量模式；严格报错走验证按钮
+          sqlFallbackUsed = true;
+          return formatSql(text, u);
+        }
+      }
+      sqlFallbackUsed = true;
+      return formatSql(text, u);
+    }
     if (lang === 'python') return formatPython(text, u);
     if (lang === 'go') return formatCStyle(text, u, 'go');
     if (lang === 'java') return formatCStyle(text, u, 'java');
@@ -1198,7 +1270,17 @@
       if (ind) return { ok: false, message: ind };
       return { ok: true, message: 'Python 结构检查通过：括号、引号、缩进正常（非完整语法校验）' };
     }
-    if (lang === 'sql') return { ok: true, message: 'SQL 结构检查通过：括号、引号配对正常（非完整语法校验）' };
+    if (lang === 'sql') {
+      if (typeof sqlFormatter !== 'undefined') {
+        try {
+          sqlFormatter.format(text, sqlFormatOpts());
+          return { ok: true, message: 'SQL 语法检查通过：sql-formatter 解析成功（标准 SQL 方言）' };
+        } catch (e) {
+          return { ok: false, message: sqlParseError(e) };
+        }
+      }
+      return { ok: true, message: 'SQL 结构检查通过：括号、引号配对正常（非完整语法校验）' };
+    }
     return { ok: true, message: LANGS[lang] + ' 结构检查通过：括号、引号配对正常（非完整语法校验）' };
   }
 
@@ -1259,7 +1341,9 @@
         lastValue = null;
         showOutput(formatted, { mode: 'text', download: downloadName(currentLang), stats: formatted.length + ' 字符' });
         detailStats.textContent = LANGS[currentLang] + ' · ' + formatted.split('\n').length + ' 行';
-        setStatus('ok', LANGS[currentLang] + ' 格式化成功');
+        setStatus('ok', currentLang === 'sql' && sqlFallbackUsed
+          ? 'SQL 格式化成功（轻量模式：真解析器无法解析这段 SQL，可能是方言语法或语句有误）'
+          : LANGS[currentLang] + ' 格式化成功');
         saveHistory(text);
       } catch (e) {
         setStatus('err', e.message);
@@ -2049,7 +2133,10 @@
     if (!lastFormatted) return null;
     // 直接对 lastFormatted 重新高亮，不读页面 DOM，避免输出区内容
     // 与 lastFormatted 不一致时（比如只点了验证没点格式化）文不对题
-    var highlighted = highlight(lastFormatted);
+    var highlighted;
+    if (outputMode === 'json') highlighted = highlight(lastFormatted);
+    else if (outputMode === 'text' && currentLang === 'sql') highlighted = highlightSql(lastFormatted);
+    else return null; // 其他语言暂无高亮
     if (highlighted.indexOf('<span class="k">') === -1 &&
         highlighted.indexOf('<span class="s">') === -1) return null;
     var colors = {
@@ -2058,7 +2145,8 @@
       n: themeVar('--number') || '#f78c6c',
       b: themeVar('--bool') || '#c792ea',
       u: themeVar('--null') || '#ff5370',
-      p: themeVar('--punct') || themeVar('--muted') || '#89ddff'
+      p: themeVar('--punct') || themeVar('--muted') || '#89ddff',
+      c: themeVar('--muted') || '#888888'
     };
     var rich = highlighted
       .replace(/<span class="k">/g, '<span style="color:' + colors.k + '">')
@@ -2066,7 +2154,8 @@
       .replace(/<span class="n">/g, '<span style="color:' + colors.n + '">')
       .replace(/<span class="b">/g, '<span style="color:' + colors.b + '">')
       .replace(/<span class="u">/g, '<span style="color:' + colors.u + '">')
-      .replace(/<span class="p">/g, '<span style="color:' + colors.p + '">');
+      .replace(/<span class="p">/g, '<span style="color:' + colors.p + '">')
+      .replace(/<span class="c">/g, '<span style="color:' + colors.c + '">');
     var bg = themeVar('--panel') || themeVar('--bg') || '#171a21';
     var fg = themeVar('--text') || '#e6e8ec';
     return '<pre style="background:' + bg + ';color:' + fg +
@@ -2077,8 +2166,9 @@
 
   function copyFormatted() {
     if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
-    // 非 JSON 输出（YAML、对比结果等）没有高亮，直接走纯文本
-    if (outputMode !== 'json') { copyText(lastFormatted); return; }
+    // JSON 和 SQL 输出带高亮，其余（YAML、对比结果、Python/Go/Java 等）
+    // 没有高亮，直接走纯文本
+    if (outputMode !== 'json' && !(outputMode === 'text' && currentLang === 'sql')) { copyText(lastFormatted); return; }
     var richHtml = buildRichHtml();
     if (!richHtml || !window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
       copyText(lastFormatted);
@@ -2097,12 +2187,13 @@
   /* ---------- 复制为 Markdown 代码块 ---------- */
   // text/plain 写 ```围栏：粘到纯文本 / Markdown 编辑器里是代码块；
   // text/html 写带颜色的 <pre>：粘到 Notion / Jira / Word / 邮件里认作
-  // 代码块（Notion、Jira 会按 JSON 自己上色，Word、邮件保留主题颜色）。
+  // 代码块（Notion、Jira 会按语言自己上色，Word、邮件保留主题颜色）。
+  // 带颜色只对 JSON 和 SQL 生效，其余语言只有围栏纯文本。
   function copyMarkdown() {
     if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
     var lang = fenceLang();
     var fenced = '```' + lang + '\n' + lastFormatted + '\n```';
-    if (outputMode === 'json') {
+    if (outputMode === 'json' || (outputMode === 'text' && currentLang === 'sql')) {
       var richHtml = buildRichHtml();
       if (richHtml && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
         var item = new ClipboardItem({

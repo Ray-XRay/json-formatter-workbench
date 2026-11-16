@@ -201,6 +201,7 @@ body {
 .code-view .b { color: var(--bool); }
 .code-view .u { color: var(--null); }
 .code-view .p { color: var(--punct, var(--muted)); }
+.code-view .c { color: var(--muted); }
 .code-view .err { background: rgba(255, 107, 107, .25); border-radius: 3px; }
 
 /* ---------- 树形视图 ---------- */
