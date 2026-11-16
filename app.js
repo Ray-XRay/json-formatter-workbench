@@ -46,6 +46,116 @@
     return v === 'tab' ? '\t' : Number(v);
   }
 
+  /* 返回缩进字符串：'  ' / '    ' / '\t' */
+  function indentString() {
+    var v = $('indentSelect').value;
+    if (v === 'tab') return '\t';
+    return repeatStr(' ', Number(v));
+  }
+
+  function repeatStr(s, n) {
+    var r = '';
+    for (var i = 0; i < n; i++) r += s;
+    return r;
+  }
+
+  /* ---------- 多语言 ---------- */
+  // 支持的语言：JSON（原有全部功能）+ SQL / Python / Go / Java（轻量格式化：
+  // 缩进、换行、关键字规范，不做完整语法解析——不是 gofmt / black 那种
+  // 全量解析器，特别乱的代码仍需人工检查）。
+  var LANGS = { json: 'JSON', sql: 'SQL', python: 'Python', go: 'Go', java: 'Java' };
+  var currentLang = 'json';  // 当前实际语言
+  var langMode = 'auto';     // 'auto' 自动检测 | 某个具体语言（用户手动锁定）
+
+  function loadLangMode() {
+    try { langMode = localStorage.getItem('json-wb-lang-mode') || 'auto'; } catch (e) {}
+    if (LANGS[langMode]) currentLang = langMode;
+    else langMode = 'auto';
+  }
+
+  function saveLangMode() {
+    try { localStorage.setItem('json-wb-lang-mode', langMode); } catch (e) {}
+  }
+
+  /* 按内容猜语言：只在「自动检测」模式下调用 */
+  function detectLanguage(text) {
+    if (!text || text.length > 200000) return null;
+    var t = text.replace(/^\s+/, '');
+    if (!t) return null;
+    if (t[0] === '{' || t[0] === '[') {
+      try { JSON.parse(text); return 'json'; } catch (e) {}
+    }
+    if (/^(SELECT|WITH|INSERT\s+INTO|UPDATE\s|DELETE\s+FROM|CREATE\s+(TABLE|INDEX|VIEW)|ALTER\s+TABLE|DROP\s+TABLE)\b/i.test(t)) return 'sql';
+    if (/^package\s+[\w\/]+\s*$/m.test(text)) return 'go';
+    if (/\bfunc(\s+\w+)?\s*\(/.test(text)) return 'go';
+    if (/^\s*import\s+"[^"]+"/m.test(text)) return 'go';
+    if (/^\s*(public\s+(final\s+)?(class|interface|enum)|import\s+java\.|package\s+[\w.]+;)/m.test(text)) return 'java';
+    if (/^\s*(public\s+)?(final\s+)?class\s+\w+\s*\{/m.test(text)) return 'java';
+    if (/\bSystem\.out\.println\b/.test(text)) return 'java';
+    if (/^\s*(def\s+\w+\s*\(|class\s+\w+\s*(\(|:)|from\s+[\w.]+\s+import\s|if\s+__name__\s*==|import\s+[a-z_][\w]*\s*$|print\s*\()/m.test(text)) return 'python';
+    if (/\bSELECT\b[\s\S]{0,200}?\bFROM\b/i.test(text)) return 'sql';
+    return null;
+  }
+
+  function outputPlaceholder() {
+    return currentLang === 'json' ? '格式化后的 JSON 会显示在这里。' : '格式化后的' + LANGS[currentLang] + '代码会显示在这里。';
+  }
+
+  var LANG_PLACEHOLDERS = {
+    json: '在此粘贴 JSON，例如：{"name": "Muse", "version": 1}',
+    sql: '在此粘贴 SQL，例如：SELECT id, name FROM users WHERE age > 18 ORDER BY id',
+    python: '在此粘贴 Python 代码，例如：def hello():\n    print("hi")',
+    go: '在此粘贴 Go 代码，例如：package main\n\nfunc main() {\n\tfmt.Println("hi")\n}',
+    java: '在此粘贴 Java 代码，例如：public class Hello {\n    public static void main(String[] args) {}\n}'
+  };
+
+  /* 根据当前语言显示 / 隐藏各功能：树形、JSONPath、排序、转 YAML、生成类型、
+     对比、转义、修复都是 JSON 专属；压缩只支持 JSON 和 SQL */
+  function updateLangUI() {
+    var isJson = currentLang === 'json';
+    $('sortKeysWrap').hidden = !isJson;
+    $('btnRepair').hidden = !isJson;
+    $('btnJpToggle').hidden = !isJson;
+    $('viewSeg').hidden = !isJson;
+    $('typeRow').hidden = !isJson;
+    $('btnYaml').hidden = !isJson;
+    $('btnDiff').hidden = !isJson;
+    $('btnEscape').hidden = !isJson;
+    $('btnUnescape').hidden = !isJson;
+    var canMinify = currentLang === 'json' || currentLang === 'sql';
+    $('btnMinify').disabled = !canMinify;
+    $('btnMinify').title = canMinify ? '压缩成一行' : LANGS[currentLang] + ' 不支持压缩（换行有语法意义）';
+    if (!isJson) {
+      if (currentView === 'tree') setView('code');
+      $('jpBar').hidden = true;
+      $('jpResults').hidden = true;
+      $('diffPanel').hidden = true;
+    }
+    input.placeholder = LANG_PLACEHOLDERS[currentLang];
+    if (!lastFormatted) output.innerHTML = '<code>' + outputPlaceholder() + '</code>';
+  }
+
+  function setLang(mode) {
+    langMode = mode;
+    saveLangMode();
+    if (LANGS[mode]) {
+      currentLang = mode;
+    } else {
+      langMode = 'auto';
+      var d = detectLanguage(input.value);
+      if (d) currentLang = d;
+    }
+    $('langSelect').value = langMode;
+    updateLangUI();
+  }
+
+  $('langSelect').addEventListener('change', function () {
+    setLang(this.value);
+    if (input.value.trim()) {
+      setStatus('idle', '已切换到' + (langMode === 'auto' ? '自动检测（当前：' + LANGS[currentLang] + '）' : LANGS[currentLang]) + '，点击「格式化」');
+    }
+  });
+
   /* ---------- 主题 ---------- */
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
@@ -134,15 +244,25 @@
   /* ---------- 报错行列定位 ---------- */
   function errorPosition(text, err) {
     var m = /position (\d+)/.exec(err.message);
-    if (!m) {
-      m = /line (\d+) column (\d+)/.exec(err.message);
-      if (m) return { line: Number(m[1]), col: Number(m[2]), pos: -1 };
-      return null;
+    if (m) {
+      var pos = Number(m[1]);
+      var before = text.slice(0, pos);
+      var lines = before.split('\n');
+      return { line: lines.length, col: lines[lines.length - 1].length + 1, pos: pos };
     }
-    var pos = Number(m[1]);
-    var before = text.slice(0, pos);
-    var lines = before.split('\n');
-    return { line: lines.length, col: lines[lines.length - 1].length + 1, pos: pos };
+    m = /line (\d+) column (\d+)/.exec(err.message);
+    if (m) return { line: Number(m[1]), col: Number(m[2]), pos: -1 };
+    // V8 有一类报错不带位置（"Unexpected token '}', ... is not valid JSON"）：
+    // 对 } / ] 这类闭括号，取它在文本里的第一次出现——通常就是出错点
+    var t = /Unexpected token '(.)'/.exec(err.message);
+    if (t && (t[1] === '}' || t[1] === ']')) {
+      var idx = text.indexOf(t[1]);
+      if (idx !== -1) {
+        var b = text.slice(0, idx).split('\n');
+        return { line: b.length, col: b[b.length - 1].length + 1, pos: idx };
+      }
+    }
+    return null;
   }
 
   /* ---------- 语法高亮 ---------- */
@@ -408,6 +528,693 @@
     if (currentView === 'tree' && outputMode === 'json') renderTreeView();
   }
 
+  /* ---------- SQL 格式化 ---------- */
+  var SQL_CLAUSES = { 'SELECT': 1, 'FROM': 1, 'WHERE': 1, 'GROUP BY': 1, 'ORDER BY': 1, 'HAVING': 1, 'LIMIT': 1, 'OFFSET': 1, 'UNION': 1, 'UNION ALL': 1, 'INTERSECT': 1, 'EXCEPT': 1, 'INSERT INTO': 1, 'VALUES': 1, 'UPDATE': 1, 'SET': 1, 'DELETE FROM': 1, 'CREATE TABLE': 1, 'ALTER TABLE': 1, 'DROP TABLE': 1 };
+  var SQL_JOINS = { 'JOIN': 1, 'LEFT JOIN': 1, 'RIGHT JOIN': 1, 'INNER JOIN': 1, 'FULL JOIN': 1, 'CROSS JOIN': 1, 'LEFT OUTER JOIN': 1, 'RIGHT OUTER JOIN': 1, 'FULL OUTER JOIN': 1 };
+  var SQL_KEYWORDS = { 'SELECT': 1, 'FROM': 1, 'WHERE': 1, 'GROUP': 1, 'BY': 1, 'ORDER': 1, 'HAVING': 1, 'LIMIT': 1, 'OFFSET': 1, 'UNION': 1, 'INTERSECT': 1, 'EXCEPT': 1, 'ALL': 1, 'DISTINCT': 1, 'AS': 1, 'AND': 1, 'OR': 1, 'NOT': 1, 'IN': 1, 'IS': 1, 'NULL': 1, 'LIKE': 1, 'BETWEEN': 1, 'EXISTS': 1, 'CASE': 1, 'WHEN': 1, 'THEN': 1, 'ELSE': 1, 'END': 1, 'JOIN': 1, 'LEFT': 1, 'RIGHT': 1, 'INNER': 1, 'FULL': 1, 'CROSS': 1, 'OUTER': 1, 'ON': 1, 'INTO': 1, 'VALUES': 1, 'SET': 1, 'UPDATE': 1, 'DELETE': 1, 'INSERT': 1, 'CREATE': 1, 'TABLE': 1, 'ALTER': 1, 'DROP': 1, 'ADD': 1, 'PRIMARY': 1, 'KEY': 1, 'FOREIGN': 1, 'REFERENCES': 1, 'INDEX': 1, 'VIEW': 1, 'ASC': 1, 'DESC': 1, 'COUNT': 1, 'SUM': 1, 'AVG': 1, 'MIN': 1, 'MAX': 1, 'CAST': 1, 'WITH': 1, 'OVER': 1, 'PARTITION': 1, 'TRUE': 1, 'FALSE': 1 };
+
+  function tokenizeSql(text) {
+    var tokens = [], i = 0, n = text.length;
+    while (i < n) {
+      var c = text[i];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
+      if (c === '-' && text[i + 1] === '-') {
+        var j = text.indexOf('\n', i);
+        if (j === -1) j = n;
+        tokens.push({ t: 'comment', v: text.slice(i, j) });
+        i = j; continue;
+      }
+      if (c === '/' && text[i + 1] === '*') {
+        var k = text.indexOf('*/', i + 2);
+        if (k === -1) k = n - 2;
+        tokens.push({ t: 'comment', v: text.slice(i, k + 2) });
+        i = k + 2; continue;
+      }
+      if (c === "'" || c === '"' || c === '`') {
+        var q = c, p = i + 1;
+        while (p < n) {
+          if (text[p] === q) {
+            if (text[p + 1] === q) { p += 2; continue; }
+            p++; break;
+          }
+          p++;
+        }
+        tokens.push({ t: 'string', v: text.slice(i, p) });
+        i = p; continue;
+      }
+      if (c === '[') {
+        var b = text.indexOf(']', i);
+        if (b === -1) b = n - 1;
+        tokens.push({ t: 'string', v: text.slice(i, b + 1) });
+        i = b + 1; continue;
+      }
+      if (/[A-Za-z_]/.test(c)) {
+        var w = i;
+        while (w < n && /[A-Za-z0-9_$]/.test(text[w])) w++;
+        tokens.push({ t: 'word', v: text.slice(i, w) });
+        i = w; continue;
+      }
+      if (/[0-9]/.test(c)) {
+        var d = i;
+        while (d < n && /[0-9A-Za-z_.]/.test(text[d])) d++;
+        tokens.push({ t: 'num', v: text.slice(i, d) });
+        i = d; continue;
+      }
+      var two = text.substr(i, 2);
+      if (two === '>=' || two === '<=' || two === '<>' || two === '!=' || two === '||') {
+        tokens.push({ t: 'op', v: two });
+        i += 2; continue;
+      }
+      tokens.push({ t: 'punct', v: c });
+      i++;
+    }
+    return tokens;
+  }
+
+  /* 把 GROUP BY、LEFT OUTER JOIN 这类多词关键字合并成一个 token */
+  function combineSqlKeywords(tokens) {
+    var PAIRS = { 'GROUP BY': 1, 'ORDER BY': 1, 'LEFT JOIN': 1, 'RIGHT JOIN': 1, 'INNER JOIN': 1, 'FULL JOIN': 1, 'CROSS JOIN': 1, 'UNION ALL': 1, 'INSERT INTO': 1, 'DELETE FROM': 1, 'CREATE TABLE': 1, 'ALTER TABLE': 1, 'DROP TABLE': 1 };
+    var TRIPLES = { 'LEFT OUTER JOIN': 1, 'RIGHT OUTER JOIN': 1, 'FULL OUTER JOIN': 1 };
+    var out = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      if (t.t === 'word' && i + 2 < tokens.length && tokens[i + 1].t === 'word' && tokens[i + 2].t === 'word') {
+        var tri = (t.v + ' ' + tokens[i + 1].v + ' ' + tokens[i + 2].v).toUpperCase();
+        if (TRIPLES[tri]) { out.push({ t: 'word', v: tri }); i += 2; continue; }
+      }
+      if (t.t === 'word' && i + 1 < tokens.length && tokens[i + 1].t === 'word') {
+        var pair = (t.v + ' ' + tokens[i + 1].v).toUpperCase();
+        if (PAIRS[pair]) { out.push({ t: 'word', v: pair }); i++; continue; }
+      }
+      out.push(t);
+    }
+    return out;
+  }
+
+  function formatSql(text, indentStr) {
+    var tokens = combineSqlKeywords(tokenizeSql(text));
+    var lines = [];
+    var cur = '';
+    var level = 0;
+    var parenStack = []; // 'func' 函数调用括号 | 'block' 子查询 / 列表括号
+    var betweenPending = false;
+    function ind(lv) { return repeatStr(indentStr, lv); }
+    function contIndent() { return level + (parenStack.length === 0 ? 1 : 0); }
+    function trimEnd(s) { return s.replace(/\s+$/, ''); }
+    function newline(lv) {
+      if (trimEnd(cur) !== '') lines.push(trimEnd(cur));
+      cur = ind(lv);
+    }
+    function append(tok, prev) {
+      var sp = false;
+      if (trimEnd(cur) !== '') {
+        if (tok.v === ',' || tok.v === ';' || tok.v === ')' || tok.v === '.') sp = false;
+        else if (prev && (prev.v === '(' || prev.v === '.')) sp = false;
+        else sp = true;
+      }
+      cur += (sp ? ' ' : '') + tok.v;
+    }
+    for (var i = 0; i < tokens.length; i++) {
+      var tok = tokens[i];
+      var prev = i > 0 ? tokens[i - 1] : null;
+      var up = tok.t === 'word' ? tok.v.toUpperCase() : null;
+      if (up && SQL_KEYWORDS[up]) tok.v = up;
+      if (tok.t === 'comment') {
+        if (tok.v.indexOf('--') === 0) {
+          if (trimEnd(cur) !== '') cur += ' ';
+          cur += tok.v;
+          newline(level);
+        } else {
+          append(tok, prev);
+        }
+        continue;
+      }
+      if (up && SQL_CLAUSES[up]) { newline(level); cur += tok.v; betweenPending = false; continue; }
+      if (up && SQL_JOINS[up]) { newline(level); cur += tok.v; betweenPending = false; continue; }
+      if (up === 'ON') { newline(contIndent()); cur += 'ON'; betweenPending = false; continue; }
+      if (up === 'AND' || up === 'OR') {
+        if (betweenPending) { append(tok, prev); betweenPending = false; }
+        else { newline(contIndent()); cur += tok.v; }
+        continue;
+      }
+      if (up === 'BETWEEN') { append(tok, prev); betweenPending = true; continue; }
+      if (up === 'WHEN') { newline(contIndent()); cur += 'WHEN'; continue; }
+      if (up === 'ELSE') { newline(contIndent()); cur += 'ELSE'; continue; }
+      if (up === 'END') {
+        if (trimEnd(cur) !== '') newline(level);
+        else cur = ind(level);
+        cur += 'END';
+        continue;
+      }
+      if (tok.v === '(') {
+        // 函数调用：COUNT(、CAST(……；其余是子查询或列表，按块处理
+        var isFunc = prev && prev.t === 'word' && !SQL_CLAUSES[prev.v] && !SQL_JOINS[prev.v] && prev.v !== 'ON' && prev.v !== 'IN' && prev.v !== 'EXISTS';
+        if (isFunc) { append(tok, prev); parenStack.push('func'); }
+        else {
+          if (trimEnd(cur) !== '') cur += ' ';
+          cur += '(';
+          parenStack.push('block');
+          level++;
+          newline(level);
+        }
+        continue;
+      }
+      if (tok.v === ')') {
+        var kind = parenStack.pop() || 'block';
+        if (kind === 'func') { cur += ')'; }
+        else {
+          level = Math.max(0, level - 1);
+          if (trimEnd(cur) !== '') newline(level);
+          else cur = ind(level);
+          cur += ')';
+        }
+        continue;
+      }
+      if (tok.v === ',') {
+        cur += ',';
+        var top = parenStack.length ? parenStack[parenStack.length - 1] : 'block';
+        if (top === 'block') newline(contIndent());
+        continue;
+      }
+      if (tok.v === ';') { cur += ';'; newline(0); continue; }
+      append(tok, prev);
+    }
+    if (trimEnd(cur) !== '') lines.push(trimEnd(cur));
+    return lines.join('\n');
+  }
+
+  /* SQL 压缩：空白压成单个空格，注释去掉，压成一行 */
+  function collapseSql(text) {
+    var tokens = combineSqlKeywords(tokenizeSql(text));
+    var out = '';
+    var prev = null;
+    tokens.forEach(function (tok) {
+      if (tok.t === 'comment') return;
+      if (tok.t === 'word') {
+        var up = tok.v.toUpperCase();
+        if (SQL_KEYWORDS[up]) tok.v = up;
+      }
+      if (out === '') out = tok.v;
+      else if (tok.v === ',' || tok.v === ';' || tok.v === ')' || tok.v === '.') out += tok.v;
+      else if (prev && (prev.v === '(' || prev.v === '.')) out += tok.v;
+      else out += ' ' + tok.v;
+      prev = tok;
+    });
+    return out;
+  }
+
+  /* ---------- Python 整理 ---------- */
+  // 保守整理：去行尾空格、空行最多留 2 行、按块结构重排缩进（以冒号开头的块
+  // 为准，原始缩进只用来判断回退）。不碰运算符间距、不改语义。
+  function measureIndent(line) {
+    var m = line.match(/^[ \t]*/)[0];
+    var w = 0;
+    for (var i = 0; i < m.length; i++) w += m[i] === '\t' ? 4 : 1;
+    return w;
+  }
+
+  function countBrackets(code) {
+    var d = 0;
+    for (var i = 0; i < code.length; i++) {
+      var c = code[i];
+      if (c === '(' || c === '[' || c === '{') d++;
+      else if (c === ')' || c === ']' || c === '}') d--;
+    }
+    return d;
+  }
+
+  // 把一行的字符串内容和注释替换成空格（保留引号和分隔符），返回处理后的
+  // 代码行和三引号状态；供缩进判断和括号计数用
+  function blankPythonLine(line, triple) {
+    var out = '', i = 0, n = line.length;
+    var state = triple ? 'triple' : 'code';
+    var q3 = triple;
+    while (i < n) {
+      var c = line[i];
+      if (state === 'code') {
+        if (c === '#') { out += repeatStr(' ', n - i); break; }
+        if (line.substr(i, 3) === "'''" || line.substr(i, 3) === '"""') {
+          var q = line.substr(i, 3);
+          out += q; i += 3;
+          var j = line.indexOf(q, i);
+          if (j === -1) { out += repeatStr(' ', n - i); return { code: out, triple: q }; }
+          out += repeatStr(' ', j - i) + q; i = j + 3;
+          continue;
+        }
+        if (c === "'" || c === '"') {
+          var q1 = c; out += c; i++;
+          while (i < n && line[i] !== q1) {
+            if (line[i] === '\\') { out += '  '; i += 2; continue; }
+            out += ' '; i++;
+          }
+          if (i < n) { out += q1; i++; }
+          continue;
+        }
+        out += c; i++;
+      } else {
+        var k = line.indexOf(q3, i);
+        if (k === -1) { out += repeatStr(' ', n - i); return { code: out, triple: q3 }; }
+        out += repeatStr(' ', k - i) + q3; i = k + 3;
+        state = 'code';
+      }
+    }
+    return { code: out, triple: state === 'triple' ? q3 : null };
+  }
+
+  /* 输入自身的缩进单位：取第一个有缩进的行的宽度（超过 8 格视为异常，
+     用配置的缩进代替）。原始缩进只用来判断「回退到外层」，必须按输入
+     自己的单位量，否则 4 格缩进的文件在 2 格设置下会被误判层级。 */
+  function detectIndentUnit(lines, fallback) {
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(/^ +/);
+      if (m) {
+        if (m[0].length <= 8) return m[0].length;
+      } else if (/^\t/.test(lines[i])) {
+        return 4;
+      }
+    }
+    return fallback;
+  }
+
+  function formatPython(text, indentStr) {
+    var bal = checkBalance(text, 'python');
+    if (bal) throw new Error(bal.message);
+    var rawLines = text.replace(/\r\n?/g, '\n').split('\n');
+    var unitWidth = detectIndentUnit(rawLines, indentStr === '\t' ? 4 : indentStr.length);
+    var out = [];
+    var level = 0, blanks = 0, triple = null, openDepth = 0;
+    var prevEndsColon = false, prevCont = false;
+    for (var i = 0; i < rawLines.length; i++) {
+      var line = rawLines[i];
+      var stripped = line.replace(/^\s+/, '').replace(/\s+$/, '');
+      if (triple) {
+        out.push(line.replace(/\s+$/, ''));
+        triple = blankPythonLine(line, triple).triple;
+        blanks = 0;
+        continue;
+      }
+      if (stripped === '') {
+        blanks++;
+        if (blanks <= 2) out.push('');
+        continue;
+      }
+      blanks = 0;
+      var scan = blankPythonLine(line, null);
+      var code = scan.code;
+      var lead = measureIndent(line);
+      var eff = level;
+      // 原始缩进只用来判断「回退到外层」：上一行不是新块开头、也不在续行里时才采信
+      if (openDepth === 0 && !prevCont && !prevEndsColon) {
+        var hint = Math.floor(lead / unitWidth);
+        if (hint < level) level = hint;
+        eff = level;
+      }
+      if (/^(elif|else|except|finally)\b/.test(stripped)) eff = Math.max(0, level - 1);
+      else if (/^[\)\]\}]/.test(stripped)) eff = Math.max(0, level - 1);
+      var newDepth = openDepth + countBrackets(code);
+      var endsBackslash = /\\$/.test(code.replace(/\s+$/, ''));
+      if (prevCont) {
+        var origLead = line.slice(0, line.length - line.replace(/^\s+/, '').length);
+        out.push(origLead + stripped);
+      } else {
+        out.push(repeatStr(indentStr, eff) + stripped);
+      }
+      if (/^(elif|else|except|finally)\b/.test(stripped)) level = eff;
+      else if (/^[\)\]\}]/.test(stripped)) level = eff;
+      else level = eff;
+      var endsColon = /:\s*$/.test(code);
+      if (endsColon && openDepth === 0 && newDepth === 0 && !prevCont) level = eff + 1;
+      prevEndsColon = endsColon;
+      prevCont = (newDepth > 0) || endsBackslash;
+      openDepth = newDepth;
+      if (scan.triple) triple = scan.triple;
+    }
+    while (out.length && out[0] === '') out.shift();
+    while (out.length && out[out.length - 1] === '') out.pop();
+    return out.join('\n');
+  }
+
+  /* Python 缩进检查：Tab 和空格混用、缩进一次跳超过一级 */
+  function checkPythonIndent(text) {
+    var lines = text.replace(/\r\n?/g, '\n').split('\n');
+    var unit = detectIndentUnit(lines, getIndent() === '\t' ? 4 : Number(getIndent()));
+    var triple = null, openDepth = 0, prevIndent = 0, prevEndsColon = false, prevCont = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var scan = blankPythonLine(line, triple);
+      triple = scan.triple;
+      if (triple) continue;
+      var stripped = line.replace(/^\s+/, '').replace(/\s+$/, '');
+      if (!stripped) continue;
+      var lead = line.match(/^\s*/)[0];
+      if (/\t/.test(lead) && / /.test(lead)) return '第 ' + (i + 1) + ' 行缩进混用了 Tab 和空格';
+      var spaces = measureIndent(line);
+      if (!prevCont && !prevEndsColon && openDepth === 0 && spaces > prevIndent + unit) {
+        return '第 ' + (i + 1) + ' 行缩进异常：比上一行多缩进超过一级';
+      }
+      var code = scan.code;
+      openDepth += countBrackets(code);
+      prevEndsColon = /:\s*$/.test(code) && openDepth === 0;
+      prevCont = openDepth > 0 || /\\$/.test(code.replace(/\s+$/, ''));
+      prevIndent = spaces;
+    }
+    return null;
+  }
+
+  /* ---------- Go / Java 格式化（C 风格） ---------- */
+  // 按大括号定缩进、分号换行、逗号后留空格、控制关键字后留空格；保留用户
+  // 的空行（最多 1 行）；字符串、字符、注释原样保留。运算符间距只做保守
+  // 处理（* & - ! 在一元语境下不留空格），不做完整语义分析。
+  function tokenizeC(text, lang) {
+    var tokens = [], i = 0, n = text.length;
+    while (i < n) {
+      var c = text[i];
+      if (c === ' ' || c === '\t' || c === '\r') { i++; continue; }
+      if (c === '\n') {
+        var j = i, newlines = 0;
+        while (j < n && (text[j] === ' ' || text[j] === '\t' || text[j] === '\r' || text[j] === '\n')) {
+          if (text[j] === '\n') newlines++;
+          j++;
+        }
+        // 单个换行是语句分隔符（Go 靠换行断句，Java 的 import 也一样），
+        // 必须保留成 nl token；两个以上换行记为空行
+        if (newlines >= 2) tokens.push({ t: 'blank', v: '' });
+        else tokens.push({ t: 'nl', v: '' });
+        i = j; continue;
+      }
+      if (c === '/' && text[i + 1] === '/') {
+        var lc = text.indexOf('\n', i);
+        if (lc === -1) lc = n;
+        tokens.push({ t: 'comment', v: text.slice(i, lc) });
+        i = lc; continue;
+      }
+      if (c === '/' && text[i + 1] === '*') {
+        var bc = text.indexOf('*/', i + 2);
+        if (bc === -1) bc = n - 2;
+        tokens.push({ t: 'comment', v: text.slice(i, bc + 2) });
+        i = bc + 2; continue;
+      }
+      if (c === '"') {
+        if (lang === 'java' && text.substr(i, 3) === '"""') {
+          var tb = text.indexOf('"""', i + 3);
+          if (tb === -1) tb = n - 3;
+          tokens.push({ t: 'string', v: text.slice(i, tb + 3) });
+          i = tb + 3; continue;
+        }
+        var s = i + 1;
+        while (s < n && text[s] !== '"' && text[s] !== '\n') { if (text[s] === '\\') s++; s++; }
+        if (s < n && text[s] === '"') s++;
+        tokens.push({ t: 'string', v: text.slice(i, s) });
+        i = s; continue;
+      }
+      if (c === "'") {
+        var ch = i + 1;
+        while (ch < n && text[ch] !== "'" && text[ch] !== '\n') { if (text[ch] === '\\') ch++; ch++; }
+        if (ch < n && text[ch] === "'") ch++;
+        tokens.push({ t: 'string', v: text.slice(i, ch) });
+        i = ch; continue;
+      }
+      if (c === '`' && lang === 'go') {
+        var bt = text.indexOf('`', i + 1);
+        if (bt === -1) bt = n - 1;
+        tokens.push({ t: 'string', v: text.slice(i, bt + 1) });
+        i = bt + 1; continue;
+      }
+      if (/[A-Za-z_$]/.test(c)) {
+        var w = i;
+        while (w < n && /[A-Za-z0-9_$]/.test(text[w])) w++;
+        tokens.push({ t: 'word', v: text.slice(i, w) });
+        i = w; continue;
+      }
+      if (/[0-9]/.test(c)) {
+        var d = i;
+        while (d < n && /[0-9A-Za-z_.]/.test(text[d])) d++;
+        tokens.push({ t: 'num', v: text.slice(i, d) });
+        i = d; continue;
+      }
+      var three = text.substr(i, 3);
+      if (three === '...' || three === '<<=' || three === '>>=') {
+        tokens.push({ t: 'op', v: three });
+        i += 3; continue;
+      }
+      var two = text.substr(i, 2);
+      if (two === '++' || two === '--' || two === '+=' || two === '-=' || two === '*=' || two === '/=' || two === '%=' || two === '==' || two === '!=' || two === '<=' || two === '>=' || two === '&&' || two === '||' || two === '->' || two === '::' || two === '<<' || two === '>>' || two === '&=' || two === '|=' || two === '^=' || two === '=>') {
+        tokens.push({ t: 'op', v: two });
+        i += 2; continue;
+      }
+      tokens.push({ t: 'punct', v: c });
+      i++;
+    }
+    return tokens;
+  }
+
+  function formatCStyle(text, indentStr, lang) {
+    var bal = checkBalance(text, 'c');
+    if (bal) throw new Error(bal.message);
+    var tokens = tokenizeC(text, lang);
+    var lines = [];
+    var cur = '';
+    var level = 0, paren = 0, inCase = false, casePending = false, breakPending = false;
+    var anno = 0; // 0 无 | 1 见到 @ | 2 注解名后 | 3 注解参数括号里
+    var CONTROL = { 'if': 1, 'for': 1, 'while': 1, 'switch': 1, 'catch': 1, 'return': 1, 'func': 1, 'synchronized': 1 };
+    function ind(lv) { return repeatStr(indentStr, lv); }
+    function stmtLevel() { return level + (inCase ? 1 : 0); }
+    function hasContent() { return cur.replace(/\s+$/, '') !== ''; }
+    function newline(lv) {
+      if (hasContent()) lines.push(cur);
+      cur = ind(lv);
+    }
+    // token 前面是否需要一个空格
+    function isUnaryContext(tok) {
+      if (!tok) return true;
+      if (tok.t === 'op' && tok.v !== '++' && tok.v !== '--') return true;
+      var v = tok.v;
+      return v === '(' || v === '[' || v === ',' || v === '=' || v === ':' || v === '{' || v === ';' || v === 'return' || v === 'case';
+    }
+    function spaceBefore(tok, prev, prevPrev) {
+      if (!prev) return false;
+      var v = tok.v;
+      if (v === ',' || v === ';' || v === ')' || v === ']' || v === '.' || v === '::' || v === '...' || v === ':') return false;
+      if (v === '++' || v === '--') return !(prev.t === 'word' || prev.t === 'num' || prev.v === ')' || prev.v === ']' || prev.v === '++' || prev.v === '--');
+      if (prev.v === '(' || prev.v === '[' || prev.v === '.' || prev.v === '::' || prev.v === '...' || prev.v === '++' || prev.v === '--') return false;
+      if ((v === '*' || v === '&' || v === '-' || v === '!') && isUnaryContext(prev)) return false;
+      if ((prev.v === '*' || prev.v === '&' || prev.v === '-' || prev.v === '!' || prev.v === '+') && isUnaryContext(prevPrev)) return false;
+      if (v === '(') return !!CONTROL[prev.v];
+      if (v === '[') return !(prev.t === 'word' || prev.t === 'num' || prev.v === ')' || prev.v === ']');
+      return true;
+    }
+    // 带换行的原文拼接：字符串 token 里可能自带换行（Go 反引号、Java 文本块）
+    function appendRaw(v) {
+      var parts = v.split('\n');
+      cur += parts[0];
+      for (var k = 1; k < parts.length; k++) { lines.push(cur); cur = parts[k]; }
+    }
+    var lastTok = null, lastLastTok = null, annoParen = 0;
+    // 换行是否只是续行（不断行）：上一个 token 是运算符/逗号/开括号等，
+    // 或下一个 token 是运算符/逗号/点/闭括号/else 等
+    function isContPrev(tok) {
+      if (!tok) return false;
+      if (tok.t === 'op' && tok.v !== '++' && tok.v !== '--') return true;
+      return tok.v === ',' || tok.v === '.' || tok.v === '(' || tok.v === '[' || tok.v === '{' || tok.v === '?' || tok.v === ':';
+    }
+    function isContNext(tok) {
+      if (!tok) return false;
+      if (tok.t === 'op' && tok.v !== '++' && tok.v !== '--') return true;
+      return tok.v === ',' || tok.v === '.' || tok.v === '?' || tok.v === ':' || tok.v === ')' || tok.v === ']' || tok.v === '}' || tok.v === 'else' || tok.v === 'catch' || tok.v === 'finally' || tok.v === 'while';
+    }
+    for (var ti = 0; ti < tokens.length; ti++) {
+      var tok = tokens[ti];
+      if (tok.t === 'nl') {
+        // 换行断句：当前行有内容、不是续行时才换行
+        if (!hasContent()) continue;
+        if (isContPrev(lastTok)) continue;
+        if (isContNext(tokens[ti + 1])) continue;
+        newline(stmtLevel());
+        continue;
+      }
+      if (tok.t === 'blank') {
+        if (hasContent()) { newline(stmtLevel()); lines.push(''); }
+        continue;
+      }
+      if (breakPending) {
+        if (tok.v !== 'else' && tok.v !== 'catch' && tok.v !== 'finally' && tok.v !== 'while' && tok.v !== ';' && tok.v !== ',' && tok.v !== '.') {
+          newline(stmtLevel());
+        }
+        breakPending = false;
+      }
+      // Java 注解：@Override 这类单独成行
+      if (anno === 2 && tok.v !== '(') {
+        newline(stmtLevel());
+        anno = 0;
+      }
+      if (tok.v === '{') {
+        if (!hasContent()) cur += '{';
+        else cur += ' {';
+        level++;
+        newline(level);
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (tok.v === '}') {
+        level = Math.max(0, level - 1);
+        inCase = false;
+        if (hasContent()) newline(level);
+        cur = ind(level);
+        appendRaw('}');
+        breakPending = true;
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (tok.v === 'case' || tok.v === 'default') {
+        inCase = false;
+        if (hasContent()) newline(level);
+        cur = ind(level);
+        appendRaw(tok.v);
+        casePending = true;
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (tok.v === ':' && casePending) {
+        appendRaw(':');
+        casePending = false;
+        newline(level + 1);
+        inCase = true;
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (tok.v === ';') {
+        appendRaw(';');
+        if (paren === 0) newline(stmtLevel());
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (tok.v === '(') { paren++; }
+      if (tok.v === ')') { paren = Math.max(0, paren - 1); }
+      if (tok.v === '@') anno = 1;
+      else if (anno === 1 && tok.t === 'word') anno = 2;
+      if (tok.t === 'comment' && tok.v.indexOf('//') === 0) {
+        if (!hasContent()) cur = ind(stmtLevel());
+        else cur += ' ';
+        appendRaw(tok.v);
+        newline(stmtLevel());
+        lastLastTok = lastTok; lastTok = tok;
+        continue;
+      }
+      if (!hasContent() && tok.v !== '{') {
+        // 行首：cur 已是缩进，直接拼接
+        appendRaw(tok.v);
+      } else {
+        if (spaceBefore(tok, lastTok, lastLastTok)) cur += ' ';
+        appendRaw(tok.v);
+      }
+      if (anno === 3 && tok.v === ')' && paren === annoParen - 1) { anno = 0; newline(stmtLevel()); }
+      else if (anno === 1 && tok.v === '(') { anno = 3; annoParen = paren; }
+      lastLastTok = lastTok; lastTok = tok;
+    }
+    if (hasContent()) lines.push(cur);
+    while (lines.length && lines[0] === '') lines.shift();
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    return lines.join('\n');
+  }
+
+  /* ---------- 括号 / 引号 / 注释配对检查（SQL / Python / Go / Java 共用） ---------- */
+  function checkBalance(text, lang) {
+    var stack = [];
+    var i = 0, n = text.length, line = 1, col = 1;
+    var state = 'code'; // code | squote | dquote | bquote | bracket | lineComment | blockComment | tripleS | tripleD
+    var strLine = 0, strCol = 0;
+    while (i < n) {
+      var c = text[i];
+      var curLine = line, curCol = col;
+      var step = 1;
+      if (state === 'code') {
+        if (lang === 'python' && c === '#') { state = 'lineComment'; }
+        else if ((lang === 'c' || lang === 'sql') && c === '/' && text[i + 1] === '/') { state = 'lineComment'; step = 2; }
+        else if ((lang === 'c' || lang === 'sql') && c === '/' && text[i + 1] === '*') { state = 'blockComment'; step = 2; }
+        else if (lang === 'python' && (text.substr(i, 3) === "'''" || text.substr(i, 3) === '"""')) {
+          state = text[i] === "'" ? 'tripleS' : 'tripleD';
+          strLine = curLine; strCol = curCol; step = 3;
+        }
+        else if (c === "'") { state = 'squote'; strLine = curLine; strCol = curCol; }
+        else if (c === '"') { state = 'dquote'; strLine = curLine; strCol = curCol; }
+        else if (lang !== 'python' && c === '`') { state = 'bquote'; strLine = curLine; strCol = curCol; }
+        else if (lang === 'sql' && c === '[') { state = 'bracket'; strLine = curLine; strCol = curCol; }
+        else if (c === '(' || c === '[' || c === '{') { stack.push({ ch: c, line: curLine, col: curCol }); }
+        else if (c === ')' || c === ']' || c === '}') {
+          var open = c === ')' ? '(' : c === ']' ? '[' : '{';
+          if (!stack.length || stack[stack.length - 1].ch !== open) {
+            return { line: curLine, col: curCol, message: '括号不匹配：第 ' + curLine + ' 行第 ' + curCol + ' 列的 ' + c + ' 没有对应的开括号' };
+          }
+          stack.pop();
+        }
+      } else if (state === 'lineComment') {
+        if (c === '\n') state = 'code';
+      } else if (state === 'blockComment') {
+        if (c === '*' && text[i + 1] === '/') { state = 'code'; step = 2; }
+      } else if (state === 'squote' || state === 'dquote' || state === 'bquote' || state === 'bracket') {
+        var q = state === 'squote' ? "'" : state === 'dquote' ? '"' : state === 'bquote' ? '`' : ']';
+        if (c === '\\' && state !== 'bracket') { step = 2; }
+        else if (c === q && text[i + 1] === q && (state === 'squote' || state === 'dquote')) { step = 2; }
+        else if (c === q) { state = 'code'; }
+        else if (c === '\n' && state !== 'bquote') {
+          return { line: strLine, col: strCol, message: '字符串未闭合：第 ' + strLine + ' 行第 ' + strCol + ' 列的引号没有闭合' };
+        }
+      } else if (state === 'tripleS' || state === 'tripleD') {
+        var q3 = state === 'tripleS' ? "'''" : '"""';
+        if (text.substr(i, 3) === q3) { state = 'code'; step = 3; }
+      }
+      for (var s = 0; s < step; s++) {
+        var ch = text[i + s];
+        if (ch === '\n') { line++; col = 1; } else col++;
+      }
+      i += step;
+    }
+    if (state === 'blockComment') return { line: line, col: col, message: '注释未闭合：/* 没有对应的 */' };
+    if (state === 'squote' || state === 'dquote' || state === 'bquote' || state === 'bracket' || state === 'tripleS' || state === 'tripleD') {
+      return { line: strLine, col: strCol, message: '字符串未闭合：第 ' + strLine + ' 行第 ' + strCol + ' 列的引号没有闭合' };
+    }
+    if (stack.length) {
+      var t = stack[stack.length - 1];
+      return { line: t.line, col: t.col, message: '括号未闭合：第 ' + t.line + ' 行第 ' + t.col + ' 列的 ' + t.ch + ' 没有对应的闭括号' };
+    }
+    return null;
+  }
+
+  /* ---------- 多语言分发 ---------- */
+  function formatCode(lang, text) {
+    var u = indentString();
+    if (lang === 'sql') return formatSql(text, u);
+    if (lang === 'python') return formatPython(text, u);
+    if (lang === 'go') return formatCStyle(text, u, 'go');
+    if (lang === 'java') return formatCStyle(text, u, 'java');
+    return text;
+  }
+
+  function validateCode(lang, text) {
+    var bal = checkBalance(text, lang === 'python' ? 'python' : lang === 'sql' ? 'sql' : 'c');
+    if (bal) return { ok: false, message: bal.message };
+    if (lang === 'python') {
+      var ind = checkPythonIndent(text);
+      if (ind) return { ok: false, message: ind };
+      return { ok: true, message: 'Python 结构检查通过：括号、引号、缩进正常（非完整语法校验）' };
+    }
+    if (lang === 'sql') return { ok: true, message: 'SQL 结构检查通过：括号、引号配对正常（非完整语法校验）' };
+    return { ok: true, message: LANGS[lang] + ' 结构检查通过：括号、引号配对正常（非完整语法校验）' };
+  }
+
+  function downloadName(lang) {
+    return { json: 'formatted.json', sql: 'query.sql', python: 'main.py', go: 'main.go', java: 'Main.java' }[lang] || 'formatted.txt';
+  }
+
+  function fenceLang() {
+    if (outputMode === 'ts') return 'typescript';
+    if (outputMode === 'yaml') return 'yaml';
+    if (outputMode === 'go') return 'go';
+    if (outputMode === 'py') return 'python';
+    if (outputMode === 'text') return currentLang;
+    return 'json';
+  }
+
   /* ---------- 核心操作 ---------- */
   function parseInput() {
     var text = input.value;
@@ -444,16 +1251,62 @@
   }
 
   function doFormat() {
+    if (currentLang !== 'json') {
+      var text = input.value;
+      if (!text.trim()) { setStatus('warn', '输入为空，请粘贴代码'); return; }
+      try {
+        var formatted = formatCode(currentLang, text);
+        lastValue = null;
+        showOutput(formatted, { mode: 'text', download: downloadName(currentLang), stats: formatted.length + ' 字符' });
+        detailStats.textContent = LANGS[currentLang] + ' · ' + formatted.split('\n').length + ' 行';
+        setStatus('ok', LANGS[currentLang] + ' 格式化成功');
+        saveHistory(text);
+      } catch (e) {
+        setStatus('err', e.message);
+      }
+      return;
+    }
     var r = parseInput();
     if (r) applyResult(r.value, 'format');
   }
 
   function doMinify() {
+    if (currentLang === 'sql') {
+      var sqlText = input.value;
+      if (!sqlText.trim()) { showToast('输入为空，先粘贴 SQL'); return; }
+      var min = collapseSql(sqlText);
+      lastValue = null;
+      showOutput(min, { mode: 'text', download: 'query.sql', stats: min.length + ' 字符' });
+      detailStats.textContent = 'SQL · 已压成一行';
+      setStatus('ok', '已压缩成一行');
+      saveHistory(sqlText);
+      return;
+    }
+    if (currentLang !== 'json') { showToast(LANGS[currentLang] + ' 不支持压缩'); return; }
     var r = parseInput();
     if (r) applyResult(r.value, 'minify');
   }
 
   function doValidate() {
+    if (currentLang !== 'json') {
+      var text = input.value;
+      if (!text.trim()) { setStatus('warn', '输入为空，请粘贴代码'); return; }
+      var res = validateCode(currentLang, text);
+      if (res.ok) {
+        lastValue = null;
+        lastFormatted = text;
+        outputMode = 'text';
+        setStatus('ok', res.message);
+        outputStats.textContent = '结构正常';
+        detailStats.textContent = LANGS[currentLang] + ' · ' + text.split('\n').length + ' 行';
+        saveHistory(text);
+      } else {
+        setStatus('err', res.message);
+        outputStats.textContent = '检查未通过';
+        detailStats.textContent = '';
+      }
+      return;
+    }
     var r = parseInput();
     if (!r) return;
     var st = analyze(r.value);
@@ -1151,6 +2004,12 @@
     inputStats.textContent = input.value.length + ' 字符';
     gutter.scrollTop = input.scrollTop;
     scheduleDraftSave();
+    // 自动检测模式下，输入一变就重新猜语言（打字、粘贴、载入文件、恢复
+    // 草稿都会走这里）；手动锁定了语言时不猜
+    if (langMode === 'auto') {
+      var d = detectLanguage(input.value);
+      if (d && d !== currentLang) { currentLang = d; updateLangUI(); }
+    }
   }
 
   /* ---------- 复制 / 下载 ---------- */
@@ -1241,7 +2100,7 @@
   // 代码块（Notion、Jira 会按 JSON 自己上色，Word、邮件保留主题颜色）。
   function copyMarkdown() {
     if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
-    var lang = outputMode === 'ts' ? 'typescript' : (outputMode === 'text' ? '' : 'json');
+    var lang = fenceLang();
     var fenced = '```' + lang + '\n' + lastFormatted + '\n```';
     if (outputMode === 'json') {
       var richHtml = buildRichHtml();
@@ -1280,6 +2139,14 @@
     stats: { keys: 128, depth: 4 },
     active: true,
     note: null
+  };
+
+  /* ---------- 各语言示例 ---------- */
+  var SAMPLES = {
+    sql: "SELECT id, name, total FROM orders JOIN users ON orders.user_id = users.id WHERE total > 100 AND status = 'paid' GROUP BY id, name ORDER BY total DESC LIMIT 10;",
+    python: 'def total(items):\n    s = 0\n    for it in items:\n          s += it["price"] * it["qty"]\n    return s\n\n\ndef main():\n    cart = [{"price": 9, "qty": 2}, {"price": 5, "qty": 3}]\n    print(total(cart))',
+    go: 'package main\nimport "fmt"\nfunc main() {\nfmt.Println("hello")\nif true {\nfmt.Println("yes")\n}\n}',
+    java: 'public class Hello {\npublic static void main(String[] args) {\nSystem.out.println("hello");\nif (args.length > 0) {\nSystem.out.println(args[0]);\n} else {\nSystem.out.println("no args");\n}\n}\n}'
   };
 
   /* ---------- 快捷键 ---------- */
@@ -1520,6 +2387,7 @@
   $('btnShare').addEventListener('click', function () { doShare(); closeMore(); });
   $('viewCode').addEventListener('click', function () { setView('code'); });
   $('viewTree').addEventListener('click', function () {
+    if (currentLang !== 'json') { showToast('树形视图只支持 JSON'); return; }
     if (lastValue === null) { showToast('先格式化或验证一次，再看树形视图'); return; }
     setView('tree');
   });
@@ -1546,7 +2414,7 @@
     lastFormatted = '';
     outputMode = 'json';
     lastDownloadName = 'formatted.json';
-    output.innerHTML = '<code>格式化后的 JSON 会显示在这里。</code>';
+    output.innerHTML = '<code>' + outputPlaceholder() + '</code>';
     tree.innerHTML = '';
     outputStats.textContent = '等待输入';
     detailStats.textContent = '';
@@ -1556,7 +2424,7 @@
   });
 
   $('btnSample').addEventListener('click', function () {
-    input.value = JSON.stringify(SAMPLE, null, 2);
+    input.value = currentLang === 'json' ? JSON.stringify(SAMPLE, null, 2) : SAMPLES[currentLang];
     updateGutter();
     doFormat();
   });
@@ -1627,6 +2495,9 @@
     renderFooterHint();
     initResizer();
     renderHistory();
+    loadLangMode();
+    $('langSelect').value = langMode;
+    updateLangUI();
     updateGutter();
     restoreDraft();
     loadFromHash();

@@ -83,6 +83,10 @@ body {
 .btn.primary:hover { background: var(--accent-hover); }
 .btn.ghost { background: transparent; }
 
+/* hidden 属性必须能盖过 .btn、.seg 等处的 display 设定 */
+[hidden] { display: none !important; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
 /* ---------- 工具栏 ---------- */
 .toolbar {
   display: flex;

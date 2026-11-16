@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JSON 格式化工作台</title>
+<title>Code 格式化工作台</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar">
   <div class="brand">
-    <span class="logo">{ }</span>
+    <span class="logo">&lt;/&gt;</span>
     <div>
-      <h1>JSON 格式化工作台</h1>
-      <p>粘贴 · 格式化 · 验证 · 查询</p>
+      <h1>Code 格式化工作台</h1>
+      <p>粘贴 · 格式化 · 验证 · 多语言</p>
     </div>
   </div>
   <div class="top-actions">
@@ -32,6 +32,16 @@
 
 <section class="toolbar">
   <div class="group">
+    <label>语言
+      <select id="langSelect">
+        <option value="auto" selected>自动检测</option>
+        <option value="json">JSON</option>
+        <option value="sql">SQL</option>
+        <option value="python">Python</option>
+        <option value="go">Go</option>
+        <option value="java">Java</option>
+      </select>
+    </label>
     <button class="btn primary" id="btnFormat">格式化</button>
     <button class="btn" id="btnMinify">压缩</button>
     <button class="btn" id="btnValidate">验证</button>
@@ -45,7 +55,7 @@
         <option value="tab">Tab</option>
       </select>
     </label>
-    <label class="check"><input type="checkbox" id="sortKeys"> 按键名排序</label>
+    <label class="check" id="sortKeysWrap"><input type="checkbox" id="sortKeys"> 按键名排序</label>
     <label class="check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
   </div>
   <div class="group">
@@ -53,7 +63,7 @@
     <div class="more-wrap">
       <button class="btn" id="btnMore" aria-expanded="false" title="更多工具：生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
       <div class="more-menu" id="moreMenu" hidden>
-        <div class="menu-row">
+        <div class="menu-row" id="typeRow">
           <span class="menu-label">生成类型</span>
           <select id="typeLang">
             <option value="ts" selected>TypeScript</option>
@@ -79,7 +89,7 @@
   </div>
   <span class="spacer"></span>
   <div class="group">
-    <div class="seg" role="tablist" aria-label="输出视图">
+    <div class="seg" id="viewSeg" role="tablist" aria-label="输出视图">
       <button class="seg-btn active" id="viewCode" role="tab">代码</button>
       <button class="seg-btn" id="viewTree" role="tab">树形</button>
     </div>
@@ -126,14 +136,14 @@
       <span class="spacer"></span>
       <button class="btn ghost small" id="btnSample">载入示例</button>
       <button class="btn ghost small" id="btnUpload">打开文件</button>
-      <input type="file" id="fileInput" accept=".json,application/json,text/plain" hidden>
+      <input type="file" id="fileInput" accept=".json,.sql,.py,.go,.java,.txt,application/json,text/plain" hidden>
       <button class="btn ghost small" id="btnPaste">粘贴剪贴板</button>
       <button class="btn ghost small" id="btnClear">清空</button>
       <span class="hint" id="inputStats">0 字符</span>
     </div>
     <div class="editor-wrap">
       <div class="gutter" id="inputGutter">1</div>
-      <textarea id="input" spellcheck="false" placeholder='在此粘贴 JSON，例如：{"name": "Muse", "version": 1}'></textarea>
+      <textarea id="input" spellcheck="false" placeholder="在此粘贴代码，语言会自动检测…"></textarea>
     </div>
   </section>
 
@@ -150,7 +160,7 @@
         <span class="hint" id="treeSearchCount"></span>
         <button class="btn ghost small" id="btnTreeSearchClear" title="清除搜索">×</button>
       </div>
-      <pre id="output" class="code-view" tabindex="0"><code>格式化后的 JSON 会显示在这里。</code></pre>
+      <pre id="output" class="code-view" tabindex="0"><code>格式化后的代码会显示在这里。</code></pre>
       <div id="tree" class="tree-view" tabindex="0" hidden></div>
       <div id="diffView" class="diff-view" hidden></div>
     </div>
