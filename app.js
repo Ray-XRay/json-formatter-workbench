@@ -2066,6 +2066,19 @@
     } catch (e) {}
   }
 
+  // 清空历史记录：删掉 localStorage 里的 json-wb-history，下拉恢复成空；
+  // 只清历史，不动当前输入框里的内容（那份草稿由输入框的「清空」管）
+  function clearHistory() {
+    try { localStorage.removeItem('json-wb-history'); } catch (e) {}
+    renderHistory();
+    showToast('已清空历史记录');
+  }
+
+  $('btnClearHistory').addEventListener('click', function () {
+    clearHistory();
+    closeMore();
+  });
+
   $('historySelect').addEventListener('change', function () {
     var idx = this.value;
     if (idx === '') return;
