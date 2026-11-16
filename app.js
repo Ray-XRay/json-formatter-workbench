@@ -243,6 +243,7 @@
       });
       wrap.appendChild(children);
       var tail = document.createElement('div');
+      tail.className = 'tree-tail';
       tail.appendChild(close);
       wrap.appendChild(tail);
 
@@ -260,6 +261,15 @@
     tree.innerHTML = '';
     if (lastValue === null && lastFormatted === '') return;
     tree.appendChild(renderTree(lastValue));
+  }
+
+  /* 展开全部树节点（Ctrl+L） */
+  function expandAllTree() {
+    if (tree.hidden) return false;
+    tree.querySelectorAll('.tree-children').forEach(function (el) { el.style.display = ''; });
+    tree.querySelectorAll('.tree-tail').forEach(function (el) { el.style.display = ''; });
+    tree.querySelectorAll('.tree-toggle').forEach(function (el) { el.textContent = '▾'; });
+    return true;
   }
 
   /* ---------- 视图切换 ---------- */
@@ -1142,7 +1152,35 @@
     if (!$('moreMenu').hidden && !e.target.closest('.more-wrap')) closeMore();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeMore();
+    if (e.key === 'Escape') { closeMore(); return; }
+    var mod = e.ctrlKey || e.metaKey;
+    if (!mod || e.altKey) return;
+    var k = (e.key || '').toLowerCase();
+    var ae = document.activeElement;
+    var tag = ae ? ae.tagName : '';
+    var editable = !!ae && (ae.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+    // Ctrl/Cmd+A：不在输入框里时，选中当前输出区（代码、树形或对比）的内容；
+    // 在输入框里时保留浏览器原生行为（选中输入框文字）
+    if (k === 'a' && !editable) {
+      if (!lastFormatted) return;
+      var target;
+      if (!$('diffView').hidden) target = $('diffView');
+      else if (currentView === 'tree' && !tree.hidden) target = tree;
+      else target = output.querySelector('code') || output;
+      if (!target || !target.textContent.trim()) return;
+      e.preventDefault();
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      var range = document.createRange();
+      range.selectNodeContents(target);
+      sel.addRange(range);
+      showToast(currentView === 'tree' ? '已选中树形内容' : '已选中格式化结果');
+    }
+    // Ctrl/Cmd+L：树形视图下展开全部节点（输入框里也能用，文本框没有原生 Ctrl+L）
+    if (k === 'l' && currentView === 'tree' && !tree.hidden) {
+      e.preventDefault();
+      if (expandAllTree()) showToast('已展开全部节点');
+    }
   });
 
   /* ---------- JSONPath 栏开关 ---------- */
