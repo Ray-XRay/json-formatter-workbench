@@ -690,3 +690,27 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
   .sc-name { font-size: 12px; }
   .modal { padding: 14px; }
 }
+
+/* ---------- 树形搜索 ---------- */
+.tree-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.tree-search[hidden] { display: none; }
+.tree-search input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: 0;
+}
+.tree-search input:focus { border-color: var(--accent); }
+.tree-search .hint { white-space: nowrap; }

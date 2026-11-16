@@ -84,6 +84,7 @@
       <button class="seg-btn" id="viewTree" role="tab">树形</button>
     </div>
     <button class="btn" id="btnCopy">复制结果</button>
+    <button class="btn" id="btnCopyMarkdown" title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色">复制 Markdown</button>
     <button class="btn" id="btnDownload">下载</button>
   </div>
 </section>
@@ -144,6 +145,11 @@
       <span class="hint" id="outputStats">等待输入</span>
     </div>
     <div class="output-wrap">
+      <div class="tree-search" id="treeSearchWrap" hidden>
+        <input type="text" id="treeSearch" placeholder="搜索键名或值…" spellcheck="false" aria-label="搜索树节点">
+        <span class="hint" id="treeSearchCount"></span>
+        <button class="btn ghost small" id="btnTreeSearchClear" title="清除搜索">×</button>
+      </div>
       <pre id="output" class="code-view" tabindex="0"><code>格式化后的 JSON 会显示在这里。</code></pre>
       <div id="tree" class="tree-view" tabindex="0" hidden></div>
       <div id="diffView" class="diff-view" hidden></div>

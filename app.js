@@ -292,6 +292,66 @@
     else { collapseAllTree(); showToast('已折叠全部节点'); }
   }
 
+  /* ---------- 树形搜索 ---------- */
+  // 按键名或叶子值过滤：命中的节点与其祖先保留显示，其余隐藏；
+  // 命中节点的子树自动展开，清空搜索后整棵树恢复默认展开状态
+  function filterTree(q) {
+    q = (q || '').trim().toLowerCase();
+    var countEl = $('treeSearchCount');
+    if (!q) {
+      renderTreeView();
+      countEl.textContent = '';
+      return 0;
+    }
+    var matches = 0;
+    function evalNode(node) {
+      var childrenEl = null, leafEl = null, head = null;
+      for (var i = 0; i < node.children.length; i++) {
+        var c = node.children[i];
+        if (c.className === 'tree-children') childrenEl = c;
+        else if (c.className === 'tree-leaf') leafEl = c;
+        else if (c.tagName === 'DIV' && !head) head = c;
+      }
+      var ownText = '';
+      if (leafEl) ownText = leafEl.textContent;
+      else if (head) {
+        var keyEl = head.querySelector('.tree-key');
+        ownText = keyEl ? keyEl.textContent : '';
+      }
+      var selfHit = ownText.toLowerCase().indexOf(q) !== -1;
+      var childHit = false;
+      if (childrenEl) {
+        for (var j = 0; j < childrenEl.children.length; j++) {
+          var child = childrenEl.children[j];
+          if (child.className === 'tree-node' && evalNode(child)) childHit = true;
+        }
+      }
+      var hit = selfHit || childHit;
+      node.style.display = hit ? '' : 'none';
+      if (hit && childrenEl) {
+        childrenEl.style.display = '';
+        var tail = null, toggle = null;
+        for (var k = 0; k < node.children.length; k++) {
+          if (node.children[k].className === 'tree-tail') tail = node.children[k];
+        }
+        if (tail) tail.style.display = '';
+        if (head) toggle = head.querySelector('.tree-toggle');
+        if (toggle) toggle.textContent = '▾';
+      }
+      if (selfHit) matches++;
+      return hit;
+    }
+    var root = tree.firstElementChild;
+    if (root && root.className === 'tree-node') evalNode(root);
+    countEl.textContent = matches > 0 ? '找到 ' + matches + ' 个匹配' : '没有找到匹配';
+    return matches;
+  }
+
+  function clearTreeSearch() {
+    $('treeSearch').value = '';
+    filterTree('');
+  }
+
   /* 选中当前输出区（代码、树形或对比）的内容 */
   function selectResult() {
     if (!lastFormatted) return;
@@ -316,7 +376,14 @@
     $('diffView').hidden = true;
     output.hidden = view !== 'code';
     tree.hidden = view !== 'tree';
-    if (view === 'tree') renderTreeView();
+    if (view === 'tree') {
+      renderTreeView();
+      $('treeSearchWrap').hidden = false;
+      var q = $('treeSearch').value;
+      if (q.trim()) filterTree(q);
+    } else {
+      $('treeSearchWrap').hidden = true;
+    }
   }
 
   /* ---------- 输出显示 ---------- */
@@ -986,6 +1053,36 @@
     showToast('分享链接已复制，打开即是这份数据');
   }
 
+  /* ---------- 输入草稿自动保存 ---------- */
+  // 输入框内容每改一次防抖 300ms 写进 localStorage，刷新 / 下次打开自动
+  // 恢复；分享链接（#j=）优先于草稿；点「清空」时会把草稿一起清掉。
+  // 挂在 updateGutter 里：所有改输入的入口（打字、粘贴、打开文件、示例、
+  // 历史、清空）最后都会走 updateGutter，一处就全覆盖了。
+  var DRAFT_KEY = 'json-wb-draft';
+  var DRAFT_MAX = 1000000; // 超过 1MB 不存，避免撑爆 localStorage
+  var draftTimer = null;
+  function saveDraft() {
+    var text = input.value;
+    try {
+      if (text.length > DRAFT_MAX) return;
+      if (text) localStorage.setItem(DRAFT_KEY, text);
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch (e) {}
+  }
+  function scheduleDraftSave() {
+    if (draftTimer) clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 300);
+  }
+  function restoreDraft() {
+    var text = '';
+    try { text = localStorage.getItem(DRAFT_KEY) || ''; } catch (e) {}
+    if (text && !input.value) {
+      input.value = text;
+      updateGutter();
+      setStatus('idle', '已恢复上次的草稿');
+    }
+  }
+
   function loadFromHash() {
     var h = location.hash;
     if (h.indexOf('#j=') === 0) {
@@ -1053,6 +1150,7 @@
     gutter.textContent = s;
     inputStats.textContent = input.value.length + ' 字符';
     gutter.scrollTop = input.scrollTop;
+    scheduleDraftSave();
   }
 
   /* ---------- 复制 / 下载 ---------- */
@@ -1137,6 +1235,31 @@
     );
   }
 
+  /* ---------- 复制为 Markdown 代码块 ---------- */
+  // text/plain 写 ```围栏：粘到纯文本 / Markdown 编辑器里是代码块；
+  // text/html 写带颜色的 <pre>：粘到 Notion / Jira / Word / 邮件里认作
+  // 代码块（Notion、Jira 会按 JSON 自己上色，Word、邮件保留主题颜色）。
+  function copyMarkdown() {
+    if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
+    var lang = outputMode === 'ts' ? 'typescript' : (outputMode === 'text' ? '' : 'json');
+    var fenced = '```' + lang + '\n' + lastFormatted + '\n```';
+    if (outputMode === 'json') {
+      var richHtml = buildRichHtml();
+      if (richHtml && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        var item = new ClipboardItem({
+          'text/html': new Blob([richHtml], { type: 'text/html' }),
+          'text/plain': new Blob([fenced], { type: 'text/plain' })
+        });
+        navigator.clipboard.write([item]).then(
+          function () { showToast('已复制 Markdown 代码块'); },
+          function () { copyText(fenced); }
+        );
+        return;
+      }
+    }
+    copyText(fenced);
+  }
+
   function downloadJson() {
     if (!lastFormatted) { showToast('没有可下载的内容，先格式化一次'); return; }
     var blob = new Blob([lastFormatted], { type: 'application/json;charset=utf-8' });
@@ -1166,6 +1289,7 @@
     { id: 'format', name: '格式化', combo: 'ctrl+enter', allowEditable: true, run: doFormat },
     { id: 'selectResult', name: '选中格式化结果', combo: 'ctrl+a', allowEditable: false, run: selectResult },
     { id: 'copyResult', name: '复制结果（带颜色）', combo: 'ctrl+alt+c', allowEditable: true, run: copyFormatted },
+    { id: 'copyMarkdown', name: '复制为 Markdown 代码块', combo: 'ctrl+alt+m', allowEditable: true, run: copyMarkdown },
     { id: 'toggleTree', name: '展开 / 折叠全部节点（树形）', combo: 'ctrl+l', allowEditable: true, run: toggleAllTree },
     { id: 'openSettings', name: '打开快捷键设置', combo: 'ctrl+alt+s', allowEditable: true, run: openShortcutSettings }
   ];
@@ -1364,7 +1488,7 @@
   });
   $('btnShortcutClose').addEventListener('click', closeShortcutSettings);
   $('btnShortcutReset').addEventListener('click', function () {
-    var defaults = { format: 'ctrl+enter', selectResult: 'ctrl+a', copyResult: 'ctrl+alt+c', toggleTree: 'ctrl+l', openSettings: 'ctrl+alt+s' };
+    var defaults = { format: 'ctrl+enter', selectResult: 'ctrl+a', copyResult: 'ctrl+alt+c', copyMarkdown: 'ctrl+alt+m', toggleTree: 'ctrl+l', openSettings: 'ctrl+alt+s' };
     SHORTCUTS.forEach(function (s) { s.combo = defaults[s.id]; });
     saveShortcuts();
     renderFooterHint();
@@ -1403,7 +1527,18 @@
   $('btnCopy').addEventListener('click', function () {
     copyFormatted();
   });
+  $('btnCopyMarkdown').addEventListener('click', copyMarkdown);
   $('btnDownload').addEventListener('click', downloadJson);
+
+  /* ---------- 树形搜索绑定 ---------- */
+  $('treeSearch').addEventListener('input', function () { filterTree(this.value); });
+  $('treeSearch').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.stopPropagation(); clearTreeSearch(); }
+  });
+  $('btnTreeSearchClear').addEventListener('click', function () {
+    clearTreeSearch();
+    $('treeSearch').focus();
+  });
 
   $('btnClear').addEventListener('click', function () {
     input.value = '';
@@ -1493,6 +1628,7 @@
     initResizer();
     renderHistory();
     updateGutter();
+    restoreDraft();
     loadFromHash();
   })();
 })();
