@@ -646,3 +646,47 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
   .more-wrap { position: static; }
   .more-menu { left: 12px; right: 12px; top: calc(100% + 6px); min-width: 0; width: auto; }
 }
+
+/* ---------- 快捷键设置弹窗 ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  width: min(520px, 94vw);
+  max-height: 86vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .35);
+  padding: 16px 18px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.modal-head h2 { margin: 0; font-size: 16px; }
+.modal-hint { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+.sc-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-top: 1px solid var(--border); }
+.sc-row:first-child { border-top: 0; }
+.sc-name { flex: 1; font-size: 13px; min-width: 0; }
+.sc-keys {
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sc-row.listening .sc-keys { border-color: var(--accent); color: var(--accent); }
+.modal-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+@media (max-width: 480px) {
+  .sc-name { font-size: 12px; }
+  .modal { padding: 14px; }
+}

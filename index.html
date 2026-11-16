@@ -67,6 +67,7 @@
         <button class="menu-item" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
         <button class="menu-item" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
         <button class="menu-item" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
+        <button class="menu-item" id="btnShortcuts" title="查看与修改全部快捷键">快捷键设置</button>
         <div class="menu-row">
           <span class="menu-label">历史</span>
           <select id="historySelect">
@@ -154,11 +155,25 @@
   <span id="statusDot" class="dot idle"></span>
   <span id="statusText">就绪</span>
   <span class="spacer"></span>
-  <span class="footer-hint">Ctrl+Enter 格式化 · Ctrl+A 选中结果 · 树形中 Ctrl+L 展开全部</span>
+  <span class="footer-hint" id="footerHint">Ctrl+Enter 格式化 · Ctrl+A 选中结果 · Ctrl+Alt+C 复制结果 · Ctrl+Alt+S 快捷键设置</span>
   <span id="detailStats"></span>
 </footer>
 
 <div class="toast" id="toast" hidden></div>
+
+<div class="modal-overlay" id="shortcutOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="快捷键设置">
+    <div class="modal-head">
+      <h2>快捷键设置</h2>
+      <button class="btn ghost small" id="btnShortcutClose">关闭</button>
+    </div>
+    <p class="modal-hint">点「更改」，然后按下新的组合键（至少包含 Ctrl / Cmd 或 Alt，Esc 取消）。改完自动保存。</p>
+    <div id="shortcutList"></div>
+    <div class="modal-foot">
+      <button class="btn" id="btnShortcutReset">恢复默认</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

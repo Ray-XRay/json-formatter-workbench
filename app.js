@@ -272,6 +272,42 @@
     return true;
   }
 
+  /* 折叠全部树节点 */
+  function collapseAllTree() {
+    if (tree.hidden) return false;
+    tree.querySelectorAll('.tree-children').forEach(function (el) { el.style.display = 'none'; });
+    tree.querySelectorAll('.tree-tail').forEach(function (el) { el.style.display = 'none'; });
+    tree.querySelectorAll('.tree-toggle').forEach(function (el) { el.textContent = '▸'; });
+    return true;
+  }
+
+  /* 展开 / 折叠全部节点（再按一次合上） */
+  function toggleAllTree() {
+    if (tree.hidden || currentView !== 'tree') return;
+    var anyCollapsed = false;
+    tree.querySelectorAll('.tree-children').forEach(function (el) {
+      if (el.style.display === 'none') anyCollapsed = true;
+    });
+    if (anyCollapsed) { expandAllTree(); showToast('已展开全部节点'); }
+    else { collapseAllTree(); showToast('已折叠全部节点'); }
+  }
+
+  /* 选中当前输出区（代码、树形或对比）的内容 */
+  function selectResult() {
+    if (!lastFormatted) return;
+    var target;
+    if (!$('diffView').hidden) target = $('diffView');
+    else if (currentView === 'tree' && !tree.hidden) target = tree;
+    else target = output.querySelector('code') || output;
+    if (!target || !target.textContent.trim()) return;
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    var range = document.createRange();
+    range.selectNodeContents(target);
+    sel.addRange(range);
+    showToast(currentView === 'tree' ? '已选中树形内容' : '已选中格式化结果');
+  }
+
   /* ---------- 视图切换 ---------- */
   function setView(view) {
     currentView = view;
@@ -1123,6 +1159,150 @@
     note: null
   };
 
+  /* ---------- 快捷键 ---------- */
+  // 注册表：改键只改 combo，行为由 run 决定；allowEditable 表示焦点在
+  // 输入框里时是否仍然生效（比如 Ctrl+Enter 在输入框里也要能格式化）
+  var SHORTCUTS = [
+    { id: 'format', name: '格式化', combo: 'ctrl+enter', allowEditable: true, run: doFormat },
+    { id: 'selectResult', name: '选中格式化结果', combo: 'ctrl+a', allowEditable: false, run: selectResult },
+    { id: 'copyResult', name: '复制结果（带颜色）', combo: 'ctrl+alt+c', allowEditable: true, run: copyFormatted },
+    { id: 'toggleTree', name: '展开 / 折叠全部节点（树形）', combo: 'ctrl+l', allowEditable: true, run: toggleAllTree },
+    { id: 'openSettings', name: '打开快捷键设置', combo: 'ctrl+alt+s', allowEditable: true, run: openShortcutSettings }
+  ];
+  var listeningId = null;
+
+  function comboLabel(combo) {
+    return combo.split('+').map(function (p) {
+      if (p === 'ctrl') return 'Ctrl';
+      if (p === 'alt') return 'Alt';
+      if (p === 'shift') return 'Shift';
+      if (p === 'enter') return 'Enter';
+      if (p === 'space') return 'Space';
+      return p.toUpperCase();
+    }).join('+');
+  }
+
+  function loadShortcuts() {
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem('json-wb-shortcuts') || '{}'); } catch (e) {}
+    SHORTCUTS.forEach(function (s) {
+      if (saved[s.id]) s.combo = saved[s.id];
+    });
+  }
+
+  function saveShortcuts() {
+    var saved = {};
+    SHORTCUTS.forEach(function (s) { saved[s.id] = s.combo; });
+    try { localStorage.setItem('json-wb-shortcuts', JSON.stringify(saved)); } catch (e) {}
+  }
+
+  function findShortcutByCombo(combo) {
+    for (var i = 0; i < SHORTCUTS.length; i++) {
+      if (SHORTCUTS[i].combo === combo) return SHORTCUTS[i];
+    }
+    return null;
+  }
+
+  // 把按键事件归一化成注册表里的组合键写法（Mac 的 Cmd 按 Ctrl 算）
+  function eventCombo(e) {
+    var k = (e.key || '').toLowerCase();
+    if (k === 'control' || k === 'alt' || k === 'shift' || k === 'meta') return null;
+    var parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push('ctrl');
+    if (e.altKey) parts.push('alt');
+    if (e.shiftKey) parts.push('shift');
+    parts.push(k === ' ' ? 'space' : k);
+    return parts.join('+');
+  }
+
+  function renderFooterHint() {
+    var el = $('footerHint');
+    if (!el) return;
+    function label(id) {
+      for (var i = 0; i < SHORTCUTS.length; i++) {
+        if (SHORTCUTS[i].id === id) return comboLabel(SHORTCUTS[i].combo);
+      }
+      return '';
+    }
+    el.textContent = label('format') + ' 格式化 · ' + label('selectResult') + ' 选中结果 · ' +
+      label('copyResult') + ' 复制结果 · ' + label('openSettings') + ' 快捷键设置';
+  }
+
+  /* ---------- 快捷键设置弹窗 ---------- */
+  function openShortcutSettings() {
+    var overlay = $('shortcutOverlay');
+    if (!overlay.hidden) { closeShortcutSettings(); return; }
+    renderShortcutList();
+    overlay.hidden = false;
+  }
+
+  function closeShortcutSettings() {
+    cancelRebind();
+    $('shortcutOverlay').hidden = true;
+  }
+
+  function renderShortcutList() {
+    var list = $('shortcutList');
+    list.innerHTML = '';
+    SHORTCUTS.forEach(function (s) {
+      var row = document.createElement('div');
+      row.className = 'sc-row' + (listeningId === s.id ? ' listening' : '');
+      var name = document.createElement('span');
+      name.className = 'sc-name';
+      name.textContent = s.name;
+      var keys = document.createElement('kbd');
+      keys.className = 'sc-keys';
+      keys.textContent = listeningId === s.id ? '按下新的组合键…' : comboLabel(s.combo);
+      var btn = document.createElement('button');
+      btn.className = 'btn small';
+      btn.textContent = listeningId === s.id ? '取消' : '更改';
+      btn.addEventListener('click', function () {
+        if (listeningId === s.id) cancelRebind();
+        else startRebind(s.id);
+      });
+      row.appendChild(name);
+      row.appendChild(keys);
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  }
+
+  function startRebind(id) {
+    listeningId = id;
+    renderShortcutList();
+  }
+
+  function cancelRebind() {
+    if (!listeningId) return;
+    listeningId = null;
+    if (!$('shortcutOverlay').hidden) renderShortcutList();
+  }
+
+  function captureCombo(e) {
+    var combo = eventCombo(e);
+    if (!combo) return;
+    if (combo === 'escape') { cancelRebind(); return; }
+    var parts = combo.split('+');
+    // 至少包含 Ctrl / Cmd 或 Alt，否则单键会抢走正常打字
+    if (parts.indexOf('ctrl') === -1 && parts.indexOf('alt') === -1) {
+      showToast('组合键至少包含 Ctrl / Cmd 或 Alt');
+      return;
+    }
+    var other = findShortcutByCombo(combo);
+    if (other && other.id !== listeningId) {
+      showToast('已被「' + other.name + '」占用，换一组试试');
+      return;
+    }
+    for (var i = 0; i < SHORTCUTS.length; i++) {
+      if (SHORTCUTS[i].id === listeningId) SHORTCUTS[i].combo = combo;
+    }
+    saveShortcuts();
+    renderFooterHint();
+    listeningId = null;
+    renderShortcutList();
+    showToast('已保存');
+  }
+
   /* ---------- 事件绑定 ---------- */
   $('btnFormat').addEventListener('click', doFormat);
   $('btnMinify').addEventListener('click', doMinify);
@@ -1151,36 +1331,48 @@
   document.addEventListener('click', function (e) {
     if (!$('moreMenu').hidden && !e.target.closest('.more-wrap')) closeMore();
   });
+  // 中央快捷键入口：所有快捷键都走注册表匹配
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { closeMore(); return; }
-    var mod = e.ctrlKey || e.metaKey;
-    if (!mod || e.altKey) return;
-    var k = (e.key || '').toLowerCase();
+    // 改键监听中：捕获下一组组合键，不执行任何动作
+    if (listeningId) {
+      e.preventDefault();
+      e.stopPropagation();
+      captureCombo(e);
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (!$('shortcutOverlay').hidden) { closeShortcutSettings(); return; }
+      closeMore();
+      return;
+    }
+    var combo = eventCombo(e);
+    if (!combo) return;
+    var sc = findShortcutByCombo(combo);
+    if (!sc) return;
     var ae = document.activeElement;
     var tag = ae ? ae.tagName : '';
     var editable = !!ae && (ae.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
-    // Ctrl/Cmd+A：不在输入框里时，选中当前输出区（代码、树形或对比）的内容；
-    // 在输入框里时保留浏览器原生行为（选中输入框文字）
-    if (k === 'a' && !editable) {
-      if (!lastFormatted) return;
-      var target;
-      if (!$('diffView').hidden) target = $('diffView');
-      else if (currentView === 'tree' && !tree.hidden) target = tree;
-      else target = output.querySelector('code') || output;
-      if (!target || !target.textContent.trim()) return;
-      e.preventDefault();
-      var sel = window.getSelection();
-      sel.removeAllRanges();
-      var range = document.createRange();
-      range.selectNodeContents(target);
-      sel.addRange(range);
-      showToast(currentView === 'tree' ? '已选中树形内容' : '已选中格式化结果');
-    }
-    // Ctrl/Cmd+L：树形视图下展开全部节点（输入框里也能用，文本框没有原生 Ctrl+L）
-    if (k === 'l' && currentView === 'tree' && !tree.hidden) {
-      e.preventDefault();
-      if (expandAllTree()) showToast('已展开全部节点');
-    }
+    if (editable && !sc.allowEditable) return;
+    e.preventDefault();
+    sc.run();
+  });
+
+  /* ---------- 快捷键设置弹窗绑定 ---------- */
+  $('btnShortcuts').addEventListener('click', function () {
+    closeMore();
+    openShortcutSettings();
+  });
+  $('btnShortcutClose').addEventListener('click', closeShortcutSettings);
+  $('btnShortcutReset').addEventListener('click', function () {
+    var defaults = { format: 'ctrl+enter', selectResult: 'ctrl+a', copyResult: 'ctrl+alt+c', toggleTree: 'ctrl+l', openSettings: 'ctrl+alt+s' };
+    SHORTCUTS.forEach(function (s) { s.combo = defaults[s.id]; });
+    saveShortcuts();
+    renderFooterHint();
+    renderShortcutList();
+    showToast('已恢复默认快捷键');
+  });
+  $('shortcutOverlay').addEventListener('click', function (e) {
+    if (e.target === this) closeShortcutSettings();
   });
 
   /* ---------- JSONPath 栏开关 ---------- */
@@ -1290,15 +1482,14 @@
       if ($('formatOnPaste').checked) doFormat();
     }, 0);
   });
-  input.addEventListener('keydown', function (e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); doFormat(); }
-  });
 
   /* ---------- 初始化 ---------- */
   (function init() {
     var theme = 'dark';
     try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
     applyTheme(theme);
+    loadShortcuts();
+    renderFooterHint();
     initResizer();
     renderHistory();
     updateGutter();
