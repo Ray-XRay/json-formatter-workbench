@@ -478,6 +478,28 @@ html[data-theme="datagrip"] {
 }
 html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8, #214283); }
 
+/* ---------- JetBrains 主题（IntelliJ Light 官方配色） ---------- */
+html[data-theme="jetbrains"] {
+  --bg: #f2f2f2;
+  --panel: #ffffff;
+  --panel-2: #e9eaee;
+  --border: #d0d3d9;
+  --text: #000000;
+  --muted: #6e6e6e;
+  --accent: #0033b3;
+  --accent-hover: #002a94;
+  --green: #067d17;
+  --red: #c90d0d;
+  --amber: #9a6b00;
+  --key: #0033b3;
+  --string: #067d17;
+  --number: #1750eb;
+  --bool: #0033b3;
+  --null: #0033b3;
+}
+html[data-theme="jetbrains"] .logo { background: linear-gradient(135deg, #ff3186, #7c4dff); }
+html[data-theme="jetbrains"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
+
 /* ---------- 顶栏主题下拉 ---------- */
 .theme-label { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .theme-label select {

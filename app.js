@@ -1026,6 +1026,64 @@
     document.body.removeChild(ta);
   }
 
+  /* ---------- 带颜色的富文本复制 ---------- */
+  // 颜色只活在页面的高亮 HTML 里，writeText 只写纯文本所以丢颜色。
+  // 这里用 ClipboardItem 同时写 text/html（行内颜色，跟随当前主题）
+  // 和 text/plain 两份：粘到 Word / Notion / 邮件里带颜色，粘到代码
+  // 编辑器里自动回落成纯文本。
+  function themeVar(name) {
+    var v = '';
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) {}
+    return v;
+  }
+
+  function buildRichHtml() {
+    if (!lastFormatted) return null;
+    // 直接对 lastFormatted 重新高亮，不读页面 DOM，避免输出区内容
+    // 与 lastFormatted 不一致时（比如只点了验证没点格式化）文不对题
+    var highlighted = highlight(lastFormatted);
+    if (highlighted.indexOf('<span class="k">') === -1 &&
+        highlighted.indexOf('<span class="s">') === -1) return null;
+    var colors = {
+      k: themeVar('--key') || '#8ecbff',
+      s: themeVar('--string') || '#a8d18d',
+      n: themeVar('--number') || '#f5b94a',
+      b: themeVar('--bool') || '#d18ce0',
+      u: themeVar('--null') || '#ff7a7a'
+    };
+    var rich = highlighted
+      .replace(/<span class="k">/g, '<span style="color:' + colors.k + '">')
+      .replace(/<span class="s">/g, '<span style="color:' + colors.s + '">')
+      .replace(/<span class="n">/g, '<span style="color:' + colors.n + '">')
+      .replace(/<span class="b">/g, '<span style="color:' + colors.b + '">')
+      .replace(/<span class="u">/g, '<span style="color:' + colors.u + '">');
+    var bg = themeVar('--panel') || themeVar('--bg') || '#171a21';
+    var fg = themeVar('--text') || '#e6e8ec';
+    return '<pre style="background:' + bg + ';color:' + fg +
+      ';font-family:Menlo,Consolas,\'Courier New\',monospace;font-size:13px;' +
+      'line-height:1.6;margin:0;padding:12px;white-space:pre;"><code>' +
+      rich + '</code></pre>';
+  }
+
+  function copyFormatted() {
+    if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
+    // 非 JSON 输出（YAML、对比结果等）没有高亮，直接走纯文本
+    if (outputMode !== 'json') { copyText(lastFormatted); return; }
+    var richHtml = buildRichHtml();
+    if (!richHtml || !window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
+      copyText(lastFormatted);
+      return;
+    }
+    var item = new ClipboardItem({
+      'text/html': new Blob([richHtml], { type: 'text/html' }),
+      'text/plain': new Blob([lastFormatted], { type: 'text/plain' })
+    });
+    navigator.clipboard.write([item]).then(
+      function () { showToast('已复制（带颜色）'); },
+      function () { copyText(lastFormatted); }
+    );
+  }
+
   function downloadJson() {
     if (!lastFormatted) { showToast('没有可下载的内容，先格式化一次'); return; }
     var blob = new Blob([lastFormatted], { type: 'application/json;charset=utf-8' });
@@ -1106,8 +1164,7 @@
   });
 
   $('btnCopy').addEventListener('click', function () {
-    if (!lastFormatted) { showToast('没有可复制的内容，先格式化一次'); return; }
-    copyText(lastFormatted);
+    copyFormatted();
   });
   $('btnDownload').addEventListener('click', downloadJson);
 
