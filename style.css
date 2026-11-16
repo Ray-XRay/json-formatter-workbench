@@ -204,6 +204,13 @@ body {
 .code-view .c { color: var(--muted); }
 .code-view .err { background: rgba(255, 107, 107, .25); border-radius: 3px; }
 
+/* ---------- 二维码 / 条码页 ---------- */
+.qr-preview { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: auto; background: var(--panel); }
+.qr-preview canvas { max-width: 100%; height: auto; box-shadow: 0 2px 16px rgba(0, 0, 0, .25); }
+.qr-empty { color: var(--muted); }
+.qr-hint { padding: 8px 14px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+.toolbar input[type="color"] { width: 36px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; }
+
 /* ---------- 树形视图 ---------- */
 .tree-view { padding: 14px; font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.7; }
 

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>二维码 / 条码生成器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">▦</span>
+    <div>
+      <h1>二维码 / 条码生成器</h1>
+      <p>QR Code · 一维条码 · GS1</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <a class="btn ghost small" href="index.html">← Code 格式化</a>
+    <label class="theme-label">主题
+      <select id="themeSelect">
+        <option value="dark" selected>深色</option>
+        <option value="light">浅色</option>
+        <option value="retro">复古</option>
+        <option value="oracle">Oracle</option>
+        <option value="oracle-light">Oracle 白</option>
+        <option value="datagrip">DataGrip</option>
+        <option value="jetbrains">JetBrains</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<section class="toolbar">
+  <div class="group">
+    <label>类型
+      <select id="formatSelect">
+        <option value="qrcode" selected>QR Code 二维码</option>
+        <option value="code128">Code 128</option>
+        <option value="code39">Code 39</option>
+        <option value="ean13">EAN-13 商品条码</option>
+        <option value="ean8">EAN-8</option>
+        <option value="upca">UPC-A</option>
+        <option value="itf14">ITF-14 外箱码</option>
+        <option value="gs1-128">GS1-128 物流条码</option>
+        <option value="gs1datamatrix">GS1 DataMatrix</option>
+        <option value="datamatrix">Data Matrix</option>
+        <option value="pdf417">PDF417</option>
+      </select>
+    </label>
+    <button class="btn primary" id="btnGenerate">生成</button>
+    <button class="btn" id="btnSample">载入示例</button>
+  </div>
+  <div class="group options">
+    <label>大小
+      <select id="scaleSelect">
+        <option value="2">小</option>
+        <option value="3" selected>中</option>
+        <option value="4">大</option>
+        <option value="5">特大</option>
+      </select>
+    </label>
+    <label id="ecWrap">纠错级别
+      <select id="ecSelect">
+        <option value="L">L · 7%</option>
+        <option value="M" selected>M · 15%</option>
+        <option value="Q">Q · 25%</option>
+        <option value="H">H · 30%</option>
+      </select>
+    </label>
+    <label class="check" id="textWrap"><input type="checkbox" id="showText" checked> 显示下方文字</label>
+  </div>
+  <div class="group">
+    <label>前景 <input type="color" id="fgColor" value="#000000"></label>
+    <label>背景 <input type="color" id="bgColor" value="#ffffff"></label>
+  </div>
+  <span class="spacer"></span>
+  <div class="group">
+    <button class="btn" id="btnDownloadPng">下载 PNG</button>
+    <button class="btn" id="btnDownloadSvg">下载 SVG</button>
+    <button class="btn" id="btnCopyImage">复制图片</button>
+  </div>
+</section>
+
+<main class="panes" id="panes">
+  <section class="pane pane-left" id="paneLeft">
+    <div class="pane-head">
+      <span>内容</span>
+      <span class="spacer"></span>
+      <button class="btn ghost small" id="btnClear">清空</button>
+      <span class="hint" id="inputStats">0 字符</span>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="qrInput" spellcheck="false" placeholder="输入要编码的内容…"></textarea>
+    </div>
+    <div class="qr-hint" id="formatHint"></div>
+  </section>
+
+  <section class="pane pane-right" id="paneRight">
+    <div class="pane-head">
+      <span>预览</span>
+      <span class="hint" id="qrStats">等待生成</span>
+    </div>
+    <div class="qr-preview" id="qrPreview">
+      <canvas id="qrCanvas" hidden></canvas>
+      <p class="qr-empty" id="qrEmpty">输入内容后自动生成</p>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span id="statusDot" class="dot idle"></span>
+  <span id="statusText">就绪</span>
+  <span class="spacer"></span>
+  <span id="detailStats"></span>
+</footer>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="bwip-js-min.js"></script>
+<script src="qr.js"></script>
+</body>
+</html>
