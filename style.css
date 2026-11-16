@@ -10,11 +10,12 @@
   --green: #3fce8f;
   --red: #ff6b6b;
   --amber: #f5b94a;
-  --key: #8ecbff;
-  --string: #a8d18d;
-  --number: #f5b94a;
-  --bool: #d18ce0;
-  --null: #ff7a7a;
+  --key: #82aaff;
+  --string: #ecc48d;
+  --number: #f78c6c;
+  --bool: #c792ea;
+  --null: #ff5370;
+  --punct: #89ddff;
   --radius: 10px;
 }
 
@@ -195,6 +196,7 @@ body {
 .code-view .n { color: var(--number); }
 .code-view .b { color: var(--bool); }
 .code-view .u { color: var(--null); }
+.code-view .p { color: var(--punct, var(--muted)); }
 .code-view .err { background: rgba(255, 107, 107, .25); border-radius: 3px; }
 
 /* ---------- 树形视图 ---------- */
@@ -382,11 +384,12 @@ html[data-theme="light"] {
   --muted: #6b7382;
   --accent: #3b62e0;
   --accent-hover: #2f52c4;
-  --key: #0b5cad;
-  --string: #2e7d32;
-  --number: #b26a00;
-  --bool: #8e24aa;
-  --null: #d32f2f;
+  --key: #005cc5;
+  --string: #22863a;
+  --number: #e36209;
+  --bool: #6f42c1;
+  --null: #d73a49;
+  --punct: #6a737d;
 }
 html[data-theme="light"] .logo { color: #fff; }
 html[data-theme="light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
@@ -409,6 +412,7 @@ html[data-theme="retro"] {
   --number: #a06a1c;
   --bool: #7a4a8a;
   --null: #b3402e;
+  --punct: #8a7a63;
 }
 html[data-theme="retro"] .logo { background: linear-gradient(135deg, #a85438, #c98a3d); }
 html[data-theme="retro"] .toast { background: #f6f0dd; box-shadow: 0 6px 24px rgba(61, 49, 41, .25); }
@@ -432,6 +436,7 @@ html[data-theme="oracle"] {
   --number: #e8c15a;
   --bool: #d18ce0;
   --null: #ff6b5e;
+  --punct: #9a938a;
 }
 html[data-theme="oracle"] .logo { background: linear-gradient(135deg, #c74634, #7a1f16); }
 
@@ -453,6 +458,7 @@ html[data-theme="oracle-light"] {
   --number: #a06a1c;
   --bool: #7a4a8a;
   --null: #d23c28;
+  --punct: #7a756c;
 }
 html[data-theme="oracle-light"] .logo { background: linear-gradient(135deg, #c74634, #e07a5f); }
 html[data-theme="oracle-light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
@@ -475,6 +481,7 @@ html[data-theme="datagrip"] {
   --number: #6897bb;
   --bool: #cc7832;
   --null: #cc7832;
+  --punct: #808080;
 }
 html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8, #214283); }
 
@@ -496,6 +503,7 @@ html[data-theme="jetbrains"] {
   --number: #1750eb;
   --bool: #0033b3;
   --null: #0033b3;
+  --punct: #6e6e6e;
 }
 html[data-theme="jetbrains"] .logo { background: linear-gradient(135deg, #ff3186, #7c4dff); }
 html[data-theme="jetbrains"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }

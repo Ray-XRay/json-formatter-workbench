@@ -146,14 +146,19 @@
   }
 
   /* ---------- 语法高亮 ---------- */
+  /* 标点（{}[],:）单独着色，层次更丰富 */
+  function punctHtml(s) {
+    return escapeHtml(s).replace(/([{}\[\],:])/g, '<span class="p">$1</span>');
+  }
+
   function highlight(json) {
     var re = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
     var out = '', last = 0, m;
     while ((m = re.exec(json))) {
-      out += escapeHtml(json.slice(last, m.index));
+      out += punctHtml(json.slice(last, m.index));
       if (m[1] !== undefined) {
         out += m[2]
-          ? '<span class="k">' + escapeHtml(m[1]) + '</span>:'
+          ? '<span class="k">' + escapeHtml(m[1]) + '</span>' + m[2].replace(':', '<span class="p">:</span>')
           : '<span class="s">' + escapeHtml(m[1]) + '</span>';
       } else if (m[3] !== undefined) {
         out += '<span class="b">' + m[3] + '</span>';
@@ -164,7 +169,7 @@
       }
       last = re.lastIndex;
     }
-    out += escapeHtml(json.slice(last));
+    out += punctHtml(json.slice(last));
     return out;
   }
 
@@ -1045,18 +1050,20 @@
     if (highlighted.indexOf('<span class="k">') === -1 &&
         highlighted.indexOf('<span class="s">') === -1) return null;
     var colors = {
-      k: themeVar('--key') || '#8ecbff',
-      s: themeVar('--string') || '#a8d18d',
-      n: themeVar('--number') || '#f5b94a',
-      b: themeVar('--bool') || '#d18ce0',
-      u: themeVar('--null') || '#ff7a7a'
+      k: themeVar('--key') || '#82aaff',
+      s: themeVar('--string') || '#ecc48d',
+      n: themeVar('--number') || '#f78c6c',
+      b: themeVar('--bool') || '#c792ea',
+      u: themeVar('--null') || '#ff5370',
+      p: themeVar('--punct') || themeVar('--muted') || '#89ddff'
     };
     var rich = highlighted
       .replace(/<span class="k">/g, '<span style="color:' + colors.k + '">')
       .replace(/<span class="s">/g, '<span style="color:' + colors.s + '">')
       .replace(/<span class="n">/g, '<span style="color:' + colors.n + '">')
       .replace(/<span class="b">/g, '<span style="color:' + colors.b + '">')
-      .replace(/<span class="u">/g, '<span style="color:' + colors.u + '">');
+      .replace(/<span class="u">/g, '<span style="color:' + colors.u + '">')
+      .replace(/<span class="p">/g, '<span style="color:' + colors.p + '">');
     var bg = themeVar('--panel') || themeVar('--bg') || '#171a21';
     var fg = themeVar('--text') || '#e6e8ec';
     return '<pre style="background:' + bg + ';color:' + fg +
