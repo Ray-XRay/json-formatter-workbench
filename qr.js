@@ -103,6 +103,39 @@
     });
   })();
 
+  /* ---------- GS1 参数区横向分隔条：上下拖动，调整输入框与参数区的高度占比 ---------- */
+  (function initGs1Divider() {
+    var paneLeft = $('paneLeft'), panel = $('gs1Panel'), div = $('gs1Divider');
+    var KEY = 'qr-wb-gs1-split';
+    var ratio = null;
+    function applyRatio(r) {
+      ratio = Math.min(60, Math.max(15, r));
+      panel.style.flex = '0 0 ' + ratio + '%';
+      panel.style.maxHeight = 'none';
+    }
+    try {
+      var saved = localStorage.getItem(KEY);
+      if (saved) applyRatio(Number(saved));
+    } catch (e) {}
+    div.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      div.classList.add('dragging');
+      try { div.setPointerCapture(e.pointerId); } catch (err) {}
+      var rect = paneLeft.getBoundingClientRect();
+      function onMove(ev) {
+        applyRatio((rect.bottom - ev.clientY) / rect.height * 100);
+      }
+      function onUp() {
+        div.classList.remove('dragging');
+        div.removeEventListener('pointermove', onMove);
+        div.removeEventListener('pointerup', onUp);
+        try { if (ratio) localStorage.setItem(KEY, ratio); } catch (err) {}
+      }
+      div.addEventListener('pointermove', onMove);
+      div.addEventListener('pointerup', onUp);
+    });
+  })();
+
   /* ---------- 各类型说明、示例 ---------- */
   var FORMATS = {
     qrcode: { label: 'QR Code', hint: '网址、文字都行，中文也可以。纠错级别越高越耐脏、耐遮挡，但码点越密。生成尺寸精确固定为小 200 / 中 300 / 大 400 px，内容再多也不会变。粘贴 GS1 Digital Link 链接（如 …/01/…/10/…）可在下方解析各参数。', sample: 'https://example.com', twoDim: true },
@@ -116,6 +149,13 @@
     medium: { qr: 300, barcodeScale: 4 },
     large: { qr: 400, barcodeScale: 6 }
   };
+
+  /* 大小档记住上次选择，不再默认中号 */
+  var SIZE_KEY = 'qr-wb-size';
+  try {
+    var savedSize = localStorage.getItem(SIZE_KEY);
+    if (savedSize && SIZE_MAP[savedSize]) $('scaleSelect').value = savedSize;
+  } catch (e) {}
 
   function currentFormat() { return $('formatSelect').value; }
   function hexNoHash(v) { return v.replace('#', ''); }
@@ -337,8 +377,9 @@
 
   function renderGs1Table() {
     var panel = $('gs1Panel');
-    if (!gs1Data || !gs1Data.params.length) { panel.hidden = true; return; }
+    if (!gs1Data || !gs1Data.params.length) { panel.hidden = true; $('gs1Divider').hidden = true; return; }
     panel.hidden = false;
+    $('gs1Divider').hidden = false;
     $('gs1Count').textContent = gs1Data.params.length + ' 个参数';
     var table = $('gs1Table');
     table.innerHTML = '';
@@ -381,7 +422,7 @@
   function updateGs1Panel() {
     if (gs1FromTable) return;
     var text = $('qrInput').value;
-    if (gs1DismissedText === text) { $('gs1Panel').hidden = true; return; }
+    if (gs1DismissedText === text) { $('gs1Panel').hidden = true; $('gs1Divider').hidden = true; return; }
     gs1Data = parseGs1(text);
     renderGs1Table();
   }
@@ -417,13 +458,72 @@
   });
 
   $('formatSelect').addEventListener('change', function () { updateFormatUI(); render(); });
-  $('scaleSelect').addEventListener('change', render);
+  $('scaleSelect').addEventListener('change', function () {
+    try { localStorage.setItem(SIZE_KEY, this.value); } catch (e) {}
+    render();
+  });
   $('ecSelect').addEventListener('change', render);
   $('showText').addEventListener('change', render);
   $('fgColor').addEventListener('input', render);
   $('bgColor').addEventListener('input', render);
 
-  $('btnGenerate').addEventListener('click', function () { render(); updateGs1Panel(); });
+  /* ---------- 生成历史：只记文本，点一条重新生成（本机保存，最多 5 条，7 天过期） ---------- */
+  var QR_HISTORY_KEY = 'qr-wb-qr-history';
+  var QR_HISTORY_TTL = 7 * 24 * 3600 * 1000;
+  var QR_HISTORY_MAX = 5;
+  function loadQrHistoryRaw() {
+    try {
+      var raw = localStorage.getItem(QR_HISTORY_KEY);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      var now = Date.now(), out = [];
+      arr.forEach(function (it) {
+        if (typeof it === 'string') { out.push({ t: now, v: it }); return; }
+        if (it && typeof it.v === 'string' && typeof it.t === 'number' && now - it.t <= QR_HISTORY_TTL) out.push(it);
+      });
+      return out;
+    } catch (e) { return []; }
+  }
+  function renderQrHistory() {
+    var items = loadQrHistoryRaw();
+    var panel = $('qrHistoryPanel');
+    if (!items.length) { panel.hidden = true; return; }
+    panel.hidden = false;
+    var list = $('qrHistoryList');
+    list.innerHTML = '';
+    items.forEach(function (it) {
+      var btn = document.createElement('button');
+      btn.className = 'qr-history-item';
+      btn.title = it.v + '（点击重新生成）';
+      btn.textContent = it.v;
+      btn.addEventListener('click', function () {
+        $('qrInput').value = it.v;
+        $('inputStats').textContent = it.v.length + ' 字符';
+        gs1DismissedText = null;
+        render();
+        updateGs1Panel();
+        saveQrHistory(it.v);
+      });
+      list.appendChild(btn);
+    });
+  }
+  function saveQrHistory(text) {
+    if (!text || !text.trim()) return;
+    try {
+      var items = loadQrHistoryRaw().filter(function (it) { return it.v !== text; });
+      items.unshift({ k: 'qr-wb-qr-history', t: Date.now(), v: text });
+      localStorage.setItem(QR_HISTORY_KEY, JSON.stringify(items.slice(0, QR_HISTORY_MAX)));
+      renderQrHistory();
+    } catch (e) {}
+  }
+  $('btnQrHistoryClear').addEventListener('click', function () {
+    try { localStorage.removeItem(QR_HISTORY_KEY); } catch (e) {}
+    renderQrHistory();
+    showToast('生成历史已清空');
+  });
+
+  $('btnGenerate').addEventListener('click', function () { render(); updateGs1Panel(); saveQrHistory($('qrInput').value); });
 
   $('btnSample').addEventListener('click', function () {
     var fmt = currentFormat();
@@ -431,6 +531,7 @@
     $('inputStats').textContent = FORMATS[fmt].sample.length + ' 字符';
     render();
     updateGs1Panel();
+    saveQrHistory(FORMATS[fmt].sample);
     $('qrInput').focus();
   });
 
@@ -445,6 +546,7 @@
   $('btnGs1Close').addEventListener('click', function () {
     gs1DismissedText = $('qrInput').value;
     $('gs1Panel').hidden = true;
+    $('gs1Divider').hidden = true;
   });
 
   $('btnGs1ResetNames').addEventListener('click', function () {
@@ -461,6 +563,26 @@
     gs1DismissedText = null;
     render();
     updateGs1Panel();
+    saveQrHistory(GS1_SAMPLE);
+    $('qrInput').focus();
+  });
+
+  /* 导入模板 URL：粘贴一条 GS1 链接当模板，载入输入框并解析参数；模板存在本机，下次打开还在导入框里 */
+  var GS1_TEMPLATE_KEY = 'qr-wb-gs1-template';
+  try {
+    var savedTpl = localStorage.getItem(GS1_TEMPLATE_KEY);
+    if (savedTpl) $('gs1TemplateInput').value = savedTpl;
+  } catch (e) {}
+  $('btnGs1Import').addEventListener('click', function () {
+    var url = $('gs1TemplateInput').value.trim();
+    if (!url) { showToast('先在导入框里粘贴一条模板 URL'); return; }
+    try { localStorage.setItem(GS1_TEMPLATE_KEY, url); } catch (e) {}
+    $('qrInput').value = url;
+    $('inputStats').textContent = url.length + ' 字符';
+    gs1DismissedText = null;
+    render();
+    updateGs1Panel();
+    saveQrHistory(url);
     $('qrInput').focus();
   });
 
@@ -524,4 +646,5 @@
   try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
   applyTheme(theme);
   updateFormatUI();
+  renderQrHistory();
 })();

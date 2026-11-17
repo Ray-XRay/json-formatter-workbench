@@ -100,6 +100,7 @@
       <textarea id="qrInput" spellcheck="false" placeholder="输入要编码的内容…"></textarea>
     </div>
     <div class="qr-hint" id="formatHint"></div>
+    <div class="divider-h" id="gs1Divider" hidden title="拖动调整 GS1 参数区的高度"></div>
     <div class="gs1-panel" id="gs1Panel" hidden>
       <div class="gs1-head">
         <span>GS1 参数</span>
@@ -108,12 +109,24 @@
         <button class="btn ghost small" id="btnGs1ResetNames" title="把所有 AI 的显示名称恢复成默认">恢复默认名称</button>
         <button class="btn ghost small" id="btnGs1Close" title="收起 GS1 参数">收起</button>
       </div>
+      <div class="gs1-template">
+        <input type="text" id="gs1TemplateInput" placeholder="粘贴模板 URL 导入，如 https://…/01/…" aria-label="GS1 模板 URL" spellcheck="false">
+        <button class="btn small" id="btnGs1Import">导入模板</button>
+      </div>
       <div class="gs1-table" id="gs1Table"></div>
       <div class="gs1-add">
         <input type="text" id="gs1NewAi" placeholder="AI，如 10" aria-label="新参数的 AI 代码" spellcheck="false">
         <input type="text" id="gs1NewValue" placeholder="值" aria-label="新参数的值" spellcheck="false">
         <button class="btn small" id="btnGs1Add">添加</button>
       </div>
+    </div>
+    <div class="qr-history" id="qrHistoryPanel" hidden>
+      <div class="qr-history-head">
+        <span>生成历史</span>
+        <span class="spacer"></span>
+        <button class="btn ghost small" id="btnQrHistoryClear" title="清空生成历史">清空</button>
+      </div>
+      <div class="qr-history-list" id="qrHistoryList"></div>
     </div>
   </section>
 
