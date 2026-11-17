@@ -375,9 +375,35 @@
   var currentOutput = '';
   var genSeq = 0;
 
+  /* 助记词按钱包样式显示：带序号的词卡网格（12 词 3 列 x 4 行，24 词 3 列 x 8 行） */
+  function renderMnemonicGrid(mnemonic) {
+    var grid = $('mnemonicGrid');
+    grid.innerHTML = '';
+    mnemonic.split(' ').forEach(function (word, i) {
+      var chip = document.createElement('div');
+      chip.className = 'pw-mn-chip';
+      var num = document.createElement('span');
+      num.className = 'pw-mn-index';
+      num.textContent = (i + 1);
+      var w = document.createElement('span');
+      w.className = 'pw-mn-word';
+      w.textContent = word;
+      chip.appendChild(num);
+      chip.appendChild(w);
+      grid.appendChild(chip);
+    });
+  }
+
   function renderPasswordList(list, o, bits) {
     currentOutput = list[0];
-    $('pwOutput').textContent = currentOutput;
+    var isMnemonic = o.mode === 'mnemonic';
+    $('pwOutput').hidden = isMnemonic;
+    $('mnemonicGrid').hidden = !isMnemonic;
+    if (isMnemonic) {
+      renderMnemonicGrid(currentOutput);
+    } else {
+      $('pwOutput').textContent = currentOutput;
+    }
     var alts = $('pwAlts');
     alts.innerHTML = '';
     list.slice(1).forEach(function (pw) {
@@ -387,7 +413,11 @@
       btn.title = '点一下换成这个';
       btn.addEventListener('click', function () {
         currentOutput = pw;
-        $('pwOutput').textContent = pw;
+        if (isMnemonic) {
+          renderMnemonicGrid(pw);
+        } else {
+          $('pwOutput').textContent = pw;
+        }
         showStrength(bits);
         setStatus('ok', '已换成备选');
       });
@@ -399,6 +429,8 @@
 
   function renderNumbers(list, o) {
     currentOutput = list.join(', ');
+    $('pwOutput').hidden = false;
+    $('mnemonicGrid').hidden = true;
     $('pwOutput').textContent = currentOutput;
     $('pwAlts').innerHTML = '';
     var range = o.numMax - o.numMin + 1;
@@ -468,8 +500,9 @@
 
   function copyOutput() {
     if (!currentOutput) { showToast('先生成一个'); return; }
+    var what = $('modeSelect').value === 'mnemonic' ? '助记词' : $('modeSelect').value === 'number' ? '数字' : '密码';
     function done(ok) {
-      if (ok) { showToast('已复制'); setStatus('ok', '已复制'); }
+      if (ok) { showToast('已复制' + what); setStatus('ok', '已复制' + what); }
       else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -510,7 +543,9 @@
     $('strengthBlock').style.display = mode === 'number' ? 'none' : '';
     $('altsWrap').style.display = mode === 'number' ? 'none' : '';
     $('numInfo').hidden = mode !== 'number';
-    $('btnCopy').textContent = mode === 'number' ? '复制全部数字' : '复制密码';
+    $('pwOutput').hidden = mode === 'mnemonic';
+    $('mnemonicGrid').hidden = mode !== 'mnemonic';
+    $('btnCopy').textContent = mode === 'mnemonic' ? '复制助记词' : mode === 'number' ? '复制全部数字' : '复制密码';
     $('pwOutput').title = mode === 'number' ? '点一下复制全部数字' : '点一下复制密码';
   }
 
@@ -544,6 +579,7 @@
   $('btnGenerate').addEventListener('click', generate);
   $('btnCopy').addEventListener('click', copyOutput);
   $('pwOutput').addEventListener('click', copyOutput);
+  $('mnemonicGrid').addEventListener('click', copyOutput);
 
   /* 检查我的密码：输入即算（200ms 防抖），只在浏览器里算 */
   $('checkInput').addEventListener('input', function () {

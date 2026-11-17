@@ -865,3 +865,13 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
 .pw-checker-row input:focus { border-color: var(--accent); outline: 0; }
 .pw-check-verdict { font-size: 12px; line-height: 1.6; color: var(--muted); }
 .pw-numinfo { line-height: 1.6; }
+
+/* ---------- 密码生成器：助记词词卡网格（钱包样式） ---------- */
+.pw-mnemonic { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; cursor: pointer; }
+.pw-mn-chip { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.pw-mnemonic:hover .pw-mn-chip { border-color: var(--accent); }
+.pw-mn-index { color: var(--muted); font-size: 12px; flex: none; width: 16px; text-align: right; }
+.pw-mn-word { font-family: var(--mono); font-size: 14px; font-weight: 600; word-break: break-all; }
+@media (max-width: 820px) {
+  .pw-mnemonic { grid-template-columns: repeat(2, 1fr); }
+}
