@@ -99,6 +99,20 @@
       <textarea id="qrInput" spellcheck="false" placeholder="输入要编码的内容…"></textarea>
     </div>
     <div class="qr-hint" id="formatHint"></div>
+    <div class="gs1-panel" id="gs1Panel" hidden>
+      <div class="gs1-head">
+        <span>GS1 参数</span>
+        <span class="hint" id="gs1Count"></span>
+        <span class="spacer"></span>
+        <button class="btn ghost small" id="btnGs1Close" title="收起 GS1 参数">收起</button>
+      </div>
+      <div class="gs1-table" id="gs1Table"></div>
+      <div class="gs1-add">
+        <input type="text" id="gs1NewAi" placeholder="AI，如 10" aria-label="新参数的 AI 代码" spellcheck="false">
+        <input type="text" id="gs1NewValue" placeholder="值" aria-label="新参数的值" spellcheck="false">
+        <button class="btn small" id="btnGs1Add">添加</button>
+      </div>
+    </div>
   </section>
 
   <div class="divider" id="divider" title="拖动调整左右宽度"></div>
