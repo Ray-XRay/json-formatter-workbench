@@ -31,8 +31,16 @@
 
   /* ---------- 各类型说明、示例 ---------- */
   var FORMATS = {
-    qrcode: { label: 'QR Code', hint: '网址、文字都行，中文也可以。纠错级别越高越耐脏、耐遮挡，但码点越密。', sample: 'https://example.com', twoDim: true },
+    qrcode: { label: 'QR Code', hint: '网址、文字都行，中文也可以。纠错级别越高越耐脏、耐遮挡，但码点越密。生成尺寸固定为小 / 中 / 大，不随内容变长而变大。', sample: 'https://example.com', twoDim: true },
     code128: { label: '条码', hint: '字母、数字和符号都行，最常用的一维条码。', sample: 'HELLO-12345', oneDim: true }
+  };
+
+  /* 大小档：二维码按目标尺寸固定输出（小 200 / 中 300 / 大 400 px，不随内容变长而变大）；
+     条码的宽度天生随内容变长，只固定模块宽度 */
+  var SIZE_MAP = {
+    small: { qr: 200, barcodeScale: 3 },
+    medium: { qr: 300, barcodeScale: 4 },
+    large: { qr: 400, barcodeScale: 6 }
   };
 
   function currentFormat() { return $('formatSelect').value; }
@@ -40,10 +48,10 @@
 
   function buildOpts() {
     var fmt = currentFormat();
+    var size = SIZE_MAP[$('scaleSelect').value] || SIZE_MAP.medium;
     var opts = {
       bcid: fmt,
       text: $('qrInput').value,
-      scale: Number($('scaleSelect').value),
       backgroundcolor: hexNoHash($('bgColor').value),
       barcolor: hexNoHash($('fgColor').value),
       textcolor: hexNoHash($('fgColor').value)
@@ -51,8 +59,21 @@
     if (FORMATS[fmt].oneDim) {
       opts.height = 10;
       opts.includetext = $('showText').checked;
+      opts.scale = size.barcodeScale;
     }
     if (fmt === 'qrcode') opts.eclevel = $('ecSelect').value;
+    return opts;
+  }
+
+  /* 二维码固定尺寸：先以 scale 1 量出模块数（含静区），再算出刚好塞进目标尺寸的倍率 */
+  function finalOpts() {
+    var opts = buildOpts();
+    if (currentFormat() === 'qrcode') {
+      var probe = document.createElement('canvas');
+      bwipjs.toCanvas(probe, { bcid: 'qrcode', text: opts.text, scale: 1, eclevel: opts.eclevel, backgroundcolor: opts.backgroundcolor, barcolor: opts.barcolor, textcolor: opts.textcolor });
+      var target = (SIZE_MAP[$('scaleSelect').value] || SIZE_MAP.medium).qr;
+      opts.scale = Math.max(1, Math.floor(target / probe.width));
+    }
     return opts;
   }
 
@@ -76,7 +97,7 @@
       return;
     }
     try {
-      bwipjs.toCanvas(canvas, buildOpts());
+      bwipjs.toCanvas(canvas, finalOpts());
       canvas.hidden = false;
       $('qrEmpty').hidden = true;
       var fmt = currentFormat();
@@ -155,7 +176,7 @@
   $('btnDownloadSvg').addEventListener('click', function () {
     if ($('qrCanvas').hidden) { showToast('没有可下载的内容，先生成一个'); return; }
     try {
-      var svg = bwipjs.toSVG(buildOpts());
+      var svg = bwipjs.toSVG(finalOpts());
       downloadBlob(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), fileName('svg'));
       showToast('已下载 ' + fileName('svg'));
     } catch (e) {

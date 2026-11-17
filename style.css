@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark; /* 让原生下拉框（select 的弹出列表）按深色渲染，否则选项文字会黑底黑字看不见 */
   --bg: #0f1115;
+  --btn-hover: #262b38;
   --panel: #171a21;
   --panel-2: #1e222c;
   --border: #2a2f3a;
@@ -78,7 +79,7 @@ body {
   transition: background .15s, border-color .15s;
 }
 
-.btn:hover { background: #262b38; border-color: #3a4152; }
+.btn:hover { background: var(--btn-hover); border-color: var(--muted); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .btn.primary:hover { background: var(--accent-hover); }
@@ -394,6 +395,7 @@ select option { background-color: var(--panel); color: var(--text); }
 html[data-theme="light"] {
   color-scheme: light;
   --bg: #f4f5f7;
+  --btn-hover: #dde2ea;
   --panel: #ffffff;
   --panel-2: #eef0f3;
   --border: #d8dce3;
@@ -415,6 +417,7 @@ html[data-theme="light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(
 html[data-theme="retro"] {
   color-scheme: light;
   --bg: #ece5d3;
+  --btn-hover: #ded3b4;
   --panel: #f6f0dd;
   --panel-2: #e9e0c6;
   --border: #d3c5a0;
@@ -440,6 +443,7 @@ html[data-theme="retro"] body { font-family: Georgia, "Songti SC", "SimSun", ser
 html[data-theme="oracle"] {
   color-scheme: dark;
   --bg: #0d0d0f;
+  --btn-hover: #2b292e;
   --panel: #17171b;
   --panel-2: #201f24;
   --border: #322f33;
@@ -463,6 +467,7 @@ html[data-theme="oracle"] .logo { background: linear-gradient(135deg, #c74634, #
 html[data-theme="oracle-light"] {
   color-scheme: light;
   --bg: #f2f2f0;
+  --btn-hover: #e4e1da;
   --panel: #ffffff;
   --panel-2: #f0efec;
   --border: #dcd9d2;
@@ -487,6 +492,7 @@ html[data-theme="oracle-light"] .toast { background: #fff; box-shadow: 0 6px 24p
 html[data-theme="datagrip"] {
   color-scheme: dark;
   --bg: #1e1e1e;
+  --btn-hover: #3a3d40;
   --panel: #232324;
   --panel-2: #2c2c2e;
   --border: #3d3d40;
@@ -510,6 +516,7 @@ html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8,
 html[data-theme="jetbrains"] {
   color-scheme: light;
   --bg: #f2f2f2;
+  --btn-hover: #d9dce2;
   --panel: #ffffff;
   --panel-2: #e9eaee;
   --border: #d0d3d9;
