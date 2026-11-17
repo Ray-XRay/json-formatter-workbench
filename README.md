@@ -84,3 +84,7 @@ python3 -m http.server 8000
 纯静态站，可直接部署到 Vercel / GitHub Pages / 任意静态托管。
 
 **安全头**：`vercel.json` 给全站加了 CSP（`default-src 'self'`，禁止外链、禁止被第三方 iframe 嵌入）与 `nosniff` / `Referrer-Policy: no-referrer` / `Permissions-Policy`；全站零对外请求，CSP 不会误拦。草稿与历史只存本机 localStorage，7 天过期（见上）。
+
+## 小巴到站看板（gmb.html）
+
+第四頁工具，與其它頁共用主題和左上角工具切換。香港專線小巴（綠色小巴）實時到站：輸入路線號碼自動試新界 / 九龍 / 港島找路線，選方向、點站即見下三班車還有幾分鐘到（大字分鐘 + 到站時間），每 30 秒自動刷新；打開即預設 87M 四號貨櫃碼頭 → 葵芳站。數據來自運輸署經 data.gov.hk 的 API（data.etagmb.gov.hk），每分鐘更新、無需 key；CSP 只放行了這一個政府域名。
