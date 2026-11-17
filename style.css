@@ -875,3 +875,8 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
 @media (max-width: 820px) {
   .pw-mnemonic { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- 密码生成器：粘贴助记词输入框 ---------- */
+.pw-textarea { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 14px; line-height: 1.6; }
+.pw-textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#mnemonicPasteGrid { margin-top: 10px; }

@@ -371,13 +371,56 @@
     verdict.className = 'pw-check-verdict';
   }
 
+  /* ---------- 查看我的助记词：粘贴已有助记词，按钱包样式排成词卡并校验 ---------- */
+  var pasteTimer = null;
+  var pastedMnemonic = '';
+  function runMnemonicPaste() {
+    var raw = $('mnemonicPaste').value;
+    var words = raw.toLowerCase().split(/[\s,]+/).filter(function (w) { return w; });
+    var grid = $('mnemonicPasteGrid');
+    var verdict = $('mnemonicPasteVerdict');
+    pastedMnemonic = words.join(' ');
+    if (!words.length) {
+      grid.hidden = true;
+      grid.innerHTML = '';
+      verdict.textContent = '';
+      verdict.className = 'pw-check-verdict';
+      return;
+    }
+    renderMnemonicGrid(pastedMnemonic, grid);
+    grid.hidden = false;
+    var bad = [];
+    words.forEach(function (w, i) { if (typeof BIP39_WORDS === 'undefined' || BIP39_WORDS.indexOf(w) === -1) bad.push((i + 1) + '（' + w + '）'); });
+    if ([12, 15, 18, 21, 24].indexOf(words.length) === -1) {
+      verdict.innerHTML = '<span style="color:var(--red)">现在是 ' + words.length + ' 个词，助记词应该是 12 / 15 / 18 / 21 / 24 个词</span>';
+      verdict.className = 'pw-check-verdict';
+      return;
+    }
+    if (bad.length) {
+      verdict.innerHTML = '<span style="color:var(--red)">第 ' + bad.join('、') + ' 个词不在 BIP39 词表里，可能是拼错了</span>';
+      verdict.className = 'pw-check-verdict';
+      return;
+    }
+    var m = pastedMnemonic;
+    validateMnemonic(pastedMnemonic).then(function (ok) {
+      if (pastedMnemonic !== m) return;
+      if (ok) {
+        var bits = words.length * 11 * 32 / 33;
+        verdict.innerHTML = '<span style="color:var(--green)">校验通过 · ' + words.length + ' 词 · ' + Math.round(bits) + ' 位熵</span>';
+      } else {
+        verdict.innerHTML = '<span style="color:var(--red)">校验和不通过，可能是抄错了某个词</span>';
+      }
+      verdict.className = 'pw-check-verdict';
+    });
+  }
+
   /* ---------- 生成与渲染 ---------- */
   var currentOutput = '';
   var genSeq = 0;
 
   /* 助记词按钱包样式显示：带序号的词卡网格（12 词 3 列 x 4 行，24 词 3 列 x 8 行） */
-  function renderMnemonicGrid(mnemonic) {
-    var grid = $('mnemonicGrid');
+  function renderMnemonicGrid(mnemonic, gridEl) {
+    var grid = gridEl || $('mnemonicGrid');
     grid.innerHTML = '';
     mnemonic.split(' ').forEach(function (word, i) {
       var chip = document.createElement('div');
@@ -498,6 +541,13 @@
     }
   }
 
+  function copyText(text, done) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
   function copyOutput() {
     if (!currentOutput) { showToast('先生成一个'); return; }
     var what = $('modeSelect').value === 'mnemonic' ? '助记词' : $('modeSelect').value === 'number' ? '数字' : '密码';
@@ -505,15 +555,11 @@
       if (ok) { showToast('已复制' + what); setStatus('ok', '已复制' + what); }
       else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
     }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(currentOutput).then(function () { done(true); }, function () { fallbackCopy(done); });
-    } else {
-      fallbackCopy(done);
-    }
+    copyText(currentOutput, done);
   }
-  function fallbackCopy(done) {
+  function fallbackCopy(text, done) {
     var ta = document.createElement('textarea');
-    ta.value = currentOutput;
+    ta.value = text;
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
     document.body.appendChild(ta);
@@ -580,6 +626,17 @@
   $('btnCopy').addEventListener('click', copyOutput);
   $('pwOutput').addEventListener('click', copyOutput);
   $('mnemonicGrid').addEventListener('click', copyOutput);
+  $('mnemonicPaste').addEventListener('input', function () {
+    if (pasteTimer) clearTimeout(pasteTimer);
+    pasteTimer = setTimeout(runMnemonicPaste, 200);
+  });
+  $('mnemonicPasteGrid').addEventListener('click', function () {
+    if (!pastedMnemonic) return;
+    copyText(pastedMnemonic, function (ok) {
+      if (ok) { showToast('已复制助记词'); setStatus('ok', '已复制助记词'); }
+      else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
+    });
+  });
 
   /* 检查我的密码：输入即算（200ms 防抖），只在浏览器里算 */
   $('checkInput').addEventListener('input', function () {
