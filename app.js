@@ -168,9 +168,26 @@
     applyTheme(this.value);
   });
 
-  /* 顶栏工具切换：选二维码 / 条码就跳到 qr.html */
-  $('modeSelect').addEventListener('change', function () {
-    if (this.value !== 'index.html') location.href = this.value;
+  /* 顶栏品牌切换：点左上角品牌块打开工具下拉 */
+  var brandBtn = $('brandBtn'), brandMenu = $('brandMenu');
+  function closeBrand() {
+    brandMenu.hidden = true;
+    brandBtn.setAttribute('aria-expanded', 'false');
+  }
+  brandBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    brandMenu.hidden = !brandMenu.hidden;
+    brandBtn.setAttribute('aria-expanded', String(!brandMenu.hidden));
+  });
+  document.addEventListener('click', function (e) {
+    if (!brandMenu.hidden && !e.target.closest('.brand-wrap')) closeBrand();
+  });
+  brandMenu.addEventListener('click', function (e) {
+    var item = e.target.closest('.brand-item');
+    if (!item) return;
+    var page = item.getAttribute('data-page');
+    closeBrand();
+    if (page && page !== 'index.html') location.href = page;
   });
 
   /* ---------- 可拖动分隔条 ---------- */
@@ -2447,6 +2464,7 @@
     if (e.key === 'Escape') {
       if (!$('shortcutOverlay').hidden) { closeShortcutSettings(); return; }
       closeMore();
+      closeBrand();
       return;
     }
     var combo = eventCombo(e);

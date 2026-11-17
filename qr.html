@@ -8,20 +8,30 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
-    <span class="logo">▦</span>
-    <div>
-      <h1>二维码 / 条码生成器</h1>
-      <p>QR Code · 条码</p>
+  <div class="brand-wrap">
+    <h1 class="brand-title-wrap">
+      <button class="brand" id="brandBtn" aria-haspopup="true" aria-expanded="false" title="切换工具">
+        <span class="logo">▦</span>
+        <span class="brand-text">
+          <span class="brand-title">二维码 / 条码生成器</span>
+          <span class="brand-sub">QR Code · 条码</span>
+        </span>
+        <span class="brand-chev">▾</span>
+      </button>
+    </h1>
+    <div class="brand-menu" id="brandMenu" hidden>
+      <button class="brand-item" data-page="index.html">
+        <span class="logo small">&lt;/&gt;</span>
+        <span class="brand-item-text"><strong>Code 格式化</strong><em>粘贴 · 格式化 · 验证 · 多语言</em></span>
+      </button>
+      <button class="brand-item active" data-page="qr.html">
+        <span class="logo small">▦</span>
+        <span class="brand-item-text"><strong>二维码 / 条码生成器</strong><em>QR Code · 条码</em></span>
+        <span class="brand-check">✓</span>
+      </button>
     </div>
   </div>
   <div class="top-actions">
-    <label class="theme-label">工具
-      <select id="modeSelect">
-        <option value="index.html">Code 格式化</option>
-        <option value="qr.html" selected>二维码 / 条码</option>
-      </select>
-    </label>
     <label class="theme-label">主题
       <select id="themeSelect">
         <option value="dark" selected>深色</option>
