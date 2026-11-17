@@ -922,3 +922,26 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
   .eta-min { font-size: 48px; }
   .gmb-dir .seg-btn { min-width: 0; }
 }
+
+/* ---------- 小巴到站 v1.11：控制區置頂吸頂，手機三欄看板 ---------- */
+.gmb-controls { position: sticky; top: 0; z-index: 20; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.gmb-controls .gmb-search-row { align-items: center; }
+.gmb-controls .gmb-route-code { font-size: 22px; }
+.gmb-stop-label { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+#stopSelect { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; }
+#stopSelect:focus { border-color: var(--accent); outline: 0; }
+.gmb-all-stops summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.gmb-all-stops .gmb-stop-head { margin-top: 10px; }
+.gmb-all-stops #stopFilter { width: 100%; }
+@media (max-width: 820px) {
+  .gmb-wrap { padding: 10px; gap: 10px; }
+  .gmb-controls { padding: 10px 12px; }
+  .gmb-eta { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .eta-card { padding: 12px 6px 10px; }
+  .eta-min { font-size: 34px; }
+  .eta-unit { font-size: 12px; }
+  .eta-time { font-size: 12px; }
+  .eta-label { font-size: 12px; }
+  .gmb-dir .seg-btn { min-width: 0; font-size: 12px; padding: 8px 10px; }
+  .gmb-route-label input { width: 110px; }
+}

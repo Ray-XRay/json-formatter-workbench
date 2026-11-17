@@ -227,6 +227,16 @@
   }
 
   function renderStops() {
+    var sel = $('stopSelect');
+    sel.innerHTML = '';
+    state.stops.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s.stop_seq;
+      opt.textContent = s.stop_seq + '. ' + s.name_tc;
+      if (s.stop_seq === state.stopSeq) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    $('stopCount').textContent = state.stops.length || '—';
     var box = $('stopList');
     var q = ($('stopFilter').value || '').trim();
     box.innerHTML = '';
@@ -264,7 +274,6 @@
     var stop = null;
     state.stops.forEach(function (s) { if (s.stop_seq === seq) stop = s; });
     state.stopName = stop ? stop.name_tc : '';
-    $('stopName').textContent = state.stopName ? '上車站：' + state.stopName : '';
     renderStops();
     loadEta();
   }
@@ -338,6 +347,7 @@
   $('btnRefresh').addEventListener('click', function () { loadEta(); });
   $('autoRefresh').addEventListener('change', function () { startAutoRefresh(); });
   $('stopFilter').addEventListener('input', function () { renderStops(); });
+  $('stopSelect').addEventListener('change', function () { setStop(Number(this.value)); });
 
   /* ---------- 啟動 ---------- */
   try { applyTheme(localStorage.getItem('json-wb-theme') || 'dark'); } catch (e) {}

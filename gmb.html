@@ -71,31 +71,28 @@
 </header>
 
 <main class="gmb-wrap">
-  <section class="gmb-card gmb-search">
+  <!-- 控制區置頂且吸頂：路線、方向、上車站都在第一屏，不用滑到底 -->
+  <section class="gmb-card gmb-controls" id="routeCard">
     <div class="gmb-search-row">
-      <label class="gmb-route-label">路線
+      <span class="gmb-route-code" id="routeCode">87M</span>
+      <label class="gmb-route-label">
         <input type="text" id="routeInput" value="87M" placeholder="例如 87M" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="小巴路線號碼">
       </label>
       <button class="btn primary" id="btnSearch">查路線</button>
       <button class="btn" id="btnRefresh" title="重新查一次到站時間">刷新</button>
-      <label class="check gmb-auto"><input type="checkbox" id="autoRefresh" checked> 每 30 秒自動刷新</label>
-    </div>
-    <div class="gmb-chips" id="recentChips"></div>
-    <p class="hint">只支援專線小巴（綠色小巴），例如 87M、87A、1、12；九巴 / 城巴不在這套數據裡。地區不用選，會自動試新界、九龍、港島。</p>
-  </section>
-
-  <section class="gmb-card" id="routeCard" hidden>
-    <div class="gmb-route-line">
-      <span class="gmb-route-code" id="routeCode">87M</span>
       <span class="hint" id="routeRegion"></span>
-      <span class="spacer"></span>
       <span class="hint" id="routeUpdated"></span>
     </div>
     <div class="gmb-dir" id="dirBtns" role="tablist" aria-label="方向"></div>
+    <label class="gmb-stop-label">上車站
+      <select id="stopSelect" aria-label="上車站"></select>
+    </label>
+    <div class="gmb-chips" id="recentChips"></div>
+    <label class="check gmb-auto"><input type="checkbox" id="autoRefresh" checked> 每 30 秒自動刷新</label>
   </section>
 
   <section class="gmb-eta" id="etaBoard" aria-live="polite">
-    <div class="eta-card" id="eta0">
+    <div class="eta-card eta-next" id="eta0">
       <div class="eta-label">下一班</div>
       <div class="eta-min">—</div>
       <div class="eta-time">—</div>
@@ -114,18 +111,16 @@
       <div class="eta-remark">—</div>
     </div>
   </section>
-  <p class="gmb-stop-name" id="stopName">正在載入 87M…</p>
 
-  <section class="gmb-card">
+  <details class="gmb-card gmb-all-stops">
+    <summary>全部站點（<span id="stopCount">—</span> 站）· 點開用列表切換</summary>
     <div class="gmb-stop-head">
-      <span>上車站（點一下切換）</span>
-      <span class="spacer"></span>
       <input type="text" id="stopFilter" placeholder="搜尋站名…" aria-label="搜尋站名" spellcheck="false">
     </div>
     <div class="stop-list" id="stopList"></div>
-  </section>
+  </details>
 
-  <p class="hint gmb-foot">數據：運輸署專線小巴實時到站，經政府資料一線通 data.gov.hk（data.etagmb.gov.hk），每分鐘更新；到站時間僅供參考，以實際交通為準。本頁只向該政府接口發請求，不上傳任何資料。</p>
+  <p class="hint gmb-foot">只支援專線小巴（綠色小巴），例如 87M、87A、1、12；九巴 / 城巴不在這套數據裡。數據：運輸署經 data.gov.hk（data.etagmb.gov.hk），每分鐘更新，僅供參考。</p>
 </main>
 
 <footer class="statusbar">
