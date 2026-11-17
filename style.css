@@ -93,6 +93,8 @@ body {
 }
 
 .logo.small { width: 30px; height: 30px; border-radius: 7px; font-size: 14px; flex: none; }
+.logo svg { width: 22px; height: 22px; display: block; }
+.logo.small svg { width: 18px; height: 18px; }
 
 .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -248,7 +250,7 @@ select option { background-color: var(--panel); color: var(--text); }
 /* ---------- GS1 参数表（Postman Params 风格） ---------- */
 .gs1-panel { border-top: 1px solid var(--border); max-height: 45%; overflow: auto; flex: none; }
 .gs1-head { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; }
-.gs1-table { padding: 0 10px 4px; }
+.gs1-table { padding: 0 10px 4px; max-height: 220px; overflow-y: auto; }
 .gs1-row { display: flex; align-items: center; gap: 8px; padding: 4px; }
 .gs1-row.disabled { opacity: .45; }
 .gs1-row input[type="checkbox"] { accent-color: var(--accent); flex: none; }
@@ -259,7 +261,14 @@ select option { background-color: var(--panel); color: var(--text); }
 }
 .gs1-row input[type="text"]:focus, .gs1-add input[type="text"]:focus { border-color: var(--accent); }
 .gs1-ai { width: 56px; flex: none; text-align: center; }
-.gs1-name { color: var(--muted); font-size: 12px; width: 150px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs1-name { display: flex; align-items: center; gap: 4px; width: 150px; flex: none; min-width: 0; }
+.gs1-row .gs1-name-input {
+  flex: 1; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 6px;
+  color: var(--muted); font-size: 12px; padding: 4px 6px; outline: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+.gs1-row .gs1-name-input:hover, .gs1-row .gs1-name-input:focus { border-color: var(--border); background: var(--panel-2); color: var(--text); }
+.gs1-date { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .gs1-value { flex: 1; min-width: 0; }
 .gs1-del { flex: none; }
 .gs1-add { display: flex; gap: 8px; padding: 6px 14px 10px; }
@@ -717,6 +726,7 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
 }
 .menu-label { color: var(--muted); font-size: 13px; white-space: nowrap; }
 .menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+.menu-hint { padding: 2px 12px 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .menu-row.check { border-radius: 6px; cursor: pointer; }
 .menu-row.check:hover { background: var(--panel-2); }
 

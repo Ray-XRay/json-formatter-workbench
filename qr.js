@@ -231,6 +231,8 @@
   var gs1DismissedText = null;  // 用户点了收起的那份内容，改内容前不再弹出
 
   function gs1AiName(ai) {
+    var custom = loadGs1CustomNames();
+    if (custom[ai]) return custom[ai];
     if (GS1_AI[ai]) return GS1_AI[ai];
     var pre3 = ai.slice(0, 3);
     if (['310', '311', '312', '313'].indexOf(pre3) !== -1) return '净重';
@@ -238,6 +240,24 @@
     if (['330', '331'].indexOf(pre3) !== -1) return '毛重';
     if (['390', '391', '392', '393'].indexOf(pre3) !== -1) return '应付金额';
     return '未知 AI';
+  }
+  /* AI 显示名称可自定义：用户改过的名字存在本机，优先于默认名 */
+  var GS1_NAMES_KEY = 'qr-wb-gs1-ai-names';
+  function loadGs1CustomNames() {
+    try {
+      var raw = localStorage.getItem(GS1_NAMES_KEY);
+      var obj = raw ? JSON.parse(raw) : {};
+      return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) { return {}; }
+  }
+  function saveGs1CustomName(ai, name) {
+    try {
+      var map = loadGs1CustomNames();
+      var def = GS1_AI[ai];
+      if (!name || name === def) delete map[ai];
+      else map[ai] = name;
+      localStorage.setItem(GS1_NAMES_KEY, JSON.stringify(map));
+    } catch (e) {}
   }
   function gs1FormatDate(v) {
     if (!/^\d{6}$/.test(v)) return null;
@@ -305,11 +325,14 @@
   }
 
   function updateGs1Name(row, p) {
-    var name = row.querySelector('.gs1-name');
+    var nameInput = row.querySelector('.gs1-name-input');
+    var dateSpan = row.querySelector('.gs1-date');
     var label = gs1AiName(p.ai);
+    nameInput.value = label;
+    nameInput.title = '点一下可改这个 AI 的显示名称';
     var date = GS1_DATE_AI.indexOf(p.ai) !== -1 ? gs1FormatDate(p.value) : null;
-    name.textContent = date ? label + ' · ' + date : label;
-    name.title = name.textContent;
+    dateSpan.textContent = date || '';
+    dateSpan.title = date ? label + '（' + date + '）' : '';
   }
 
   function renderGs1Table() {
@@ -332,6 +355,16 @@
       ai.addEventListener('change', function () { p.ai = ai.value.trim(); updateGs1Name(row, p); gs1TableChanged(); });
       var name = document.createElement('span');
       name.className = 'gs1-name';
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text'; nameInput.className = 'gs1-name-input';
+      nameInput.setAttribute('aria-label', 'AI 显示名称，点一下可改');
+      nameInput.addEventListener('change', function () {
+        saveGs1CustomName(p.ai, nameInput.value.trim());
+        updateGs1Name(row, p);
+      });
+      var dateSpan = document.createElement('span');
+      dateSpan.className = 'gs1-date';
+      name.appendChild(nameInput); name.appendChild(dateSpan);
       var val = document.createElement('input');
       val.type = 'text'; val.value = p.value; val.className = 'gs1-value';
       val.setAttribute('aria-label', '参数值');
@@ -412,6 +445,23 @@
   $('btnGs1Close').addEventListener('click', function () {
     gs1DismissedText = $('qrInput').value;
     $('gs1Panel').hidden = true;
+  });
+
+  $('btnGs1ResetNames').addEventListener('click', function () {
+    try { localStorage.removeItem(GS1_NAMES_KEY); } catch (e) {}
+    renderGs1Table();
+    showToast('AI 显示名称已恢复默认');
+  });
+
+  /* GS1 示例：用一组真实参数载入示例链接，参数表与二维码一起生成，方便测试 */
+  var GS1_SAMPLE = 'https://example.com/01/09506000134352/10/LOT2026A/21/SN100001?17=261231&30=12';
+  $('btnGs1Sample').addEventListener('click', function () {
+    $('qrInput').value = GS1_SAMPLE;
+    $('inputStats').textContent = GS1_SAMPLE.length + ' 字符';
+    gs1DismissedText = null;
+    render();
+    updateGs1Panel();
+    $('qrInput').focus();
   });
 
   $('btnGs1Add').addEventListener('click', function () {

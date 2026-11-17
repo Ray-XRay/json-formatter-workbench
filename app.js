@@ -2019,12 +2019,18 @@
   // 历史、清空）最后都会走 updateGutter，一处就全覆盖了。
   var DRAFT_KEY = 'json-wb-draft';
   var DRAFT_MAX = 1000000; // 超过 1MB 不存，避免撑爆 localStorage
+  var DRAFT_TTL = 7 * 24 * 3600 * 1000; // 草稿 7 天后过期
+  var REMEMBER_KEY = 'json-wb-remember'; // '0' = 不记住草稿与历史
   var draftTimer = null;
+  function isRememberOn() {
+    try { return localStorage.getItem(REMEMBER_KEY) !== '0'; } catch (e) { return true; }
+  }
   function saveDraft() {
     var text = input.value;
     try {
+      if (!isRememberOn()) return;
       if (text.length > DRAFT_MAX) return;
-      if (text) localStorage.setItem(DRAFT_KEY, text);
+      if (text) localStorage.setItem(DRAFT_KEY, JSON.stringify({ k: 'json-wb-draft', t: Date.now(), v: text }));
       else localStorage.removeItem(DRAFT_KEY);
     } catch (e) {}
   }
@@ -2034,7 +2040,22 @@
   }
   function restoreDraft() {
     var text = '';
-    try { text = localStorage.getItem(DRAFT_KEY) || ''; } catch (e) {}
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY) || '';
+      if (raw) {
+        var obj = null;
+        try { obj = JSON.parse(raw); } catch (e) {}
+        if (obj && obj.k === 'json-wb-draft' && typeof obj.v === 'string') {
+          if (typeof obj.t === 'number' && Date.now() - obj.t > DRAFT_TTL) {
+            localStorage.removeItem(DRAFT_KEY);
+          } else {
+            text = obj.v;
+          }
+        } else {
+          text = raw; // 旧格式纯文本：保留一次，下次保存时改写成新格式
+        }
+      }
+    } catch (e) {}
     if (text && !input.value) {
       input.value = text;
       updateGutter();
@@ -2058,11 +2079,24 @@
   }
 
   /* ---------- 历史记录 ---------- */
-  function loadHistory() {
+  var HISTORY_TTL = 7 * 24 * 3600 * 1000; // 历史 7 天后过期
+  function loadHistoryRaw() {
     try {
       var raw = localStorage.getItem('json-wb-history');
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      var now = Date.now();
+      var out = [];
+      arr.forEach(function (it) {
+        if (typeof it === 'string') { out.push({ t: now, v: it }); return; } // 旧格式：保留一次，过期从迁移时算
+        if (it && it.k === 'json-wb-history' && typeof it.v === 'string' && typeof it.t === 'number' && now - it.t <= HISTORY_TTL) out.push(it);
+      });
+      return out;
     } catch (e) { return []; }
+  }
+  function loadHistory() {
+    return loadHistoryRaw().map(function (it) { return it.v; });
   }
 
   function renderHistory() {
@@ -2080,9 +2114,10 @@
 
   function saveHistory(text) {
     if (!text || !text.trim() || text.length > 200000) return;
+    if (!isRememberOn()) return;
     try {
-      var items = loadHistory().filter(function (t) { return t !== text; });
-      items.unshift(text);
+      var items = loadHistoryRaw().filter(function (it) { return it.v !== text; });
+      items.unshift({ k: 'json-wb-history', t: Date.now(), v: text });
       localStorage.setItem('json-wb-history', JSON.stringify(items.slice(0, 5)));
       renderHistory();
     } catch (e) {}
@@ -2095,6 +2130,24 @@
     renderHistory();
     showToast('已清空历史记录');
   }
+
+  // 「记住输入草稿与历史」开关：关掉立即删掉已存的草稿与历史，且不再写入
+  $('rememberDraft').checked = isRememberOn();
+  $('rememberDraft').addEventListener('change', function () {
+    try {
+      if (this.checked) {
+        localStorage.removeItem(REMEMBER_KEY);
+        scheduleDraftSave();
+        showToast('已开启记住草稿与历史');
+      } else {
+        localStorage.setItem(REMEMBER_KEY, '0');
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem('json-wb-history');
+        renderHistory();
+        showToast('已关闭，已删除本地保存的草稿与历史');
+      }
+    } catch (e) {}
+  });
 
   $('btnClearHistory').addEventListener('click', function () {
     clearHistory();
@@ -2632,5 +2685,7 @@
     updateGutter();
     restoreDraft();
     loadFromHash();
+    // 测试钩子：无头测试用它验证草稿过期与历史过期，不影响页面功能
+    window.__wb = { restoreDraft: restoreDraft, loadHistoryRaw: loadHistoryRaw, isRememberOn: isRememberOn };
   })();
 })();

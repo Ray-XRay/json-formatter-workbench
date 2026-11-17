@@ -11,7 +11,7 @@
   <div class="brand-wrap">
     <h1 class="brand-title-wrap">
       <button class="brand" id="brandBtn" aria-haspopup="true" aria-expanded="false" title="切换工具">
-        <span class="logo">▦</span>
+        <span class="logo"><svg viewBox="0 0 21 21" aria-hidden="true"><path fill="#fff" fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2zM8 6h1v1H8zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM6 8h1v1H6zM6 10h1v1H6zM6 12h1v1H6zM6 14h1v1H6zM6 16h1v1H6zM6 18h1v1H6zM6 20h1v1H6zM9 1h1v1H9zM11 3h1v1h-1zM9 5h1v1H9zM12 2h1v1h-1zM10 8h1v1h-1zM12 9h1v1h-1zM9 11h1v1H9zM11 12h1v1h-1zM13 10h1v1h-1zM8 10h1v1H8zM16 9h1v1h-1zM18 11h1v1h-1zM15 12h1v1h-1zM17 14h1v1h-1zM19 16h1v1h-1zM9 18h1v1H9zM12 19h1v1h-1zM15 17h1v1h-1zM18 19h1v1h-1zM11 20h1v1h-1zM16 20h1v1h-1zM19 9h1v1h-1zM10 16h1v1h-1zM13 15h1v1h-1z"/></svg></span>
         <span class="brand-text">
           <span class="brand-title">二维码 / 条码生成器</span>
           <span class="brand-sub">QR Code · 条码</span>
@@ -25,7 +25,7 @@
         <span class="brand-item-text"><strong>Code 格式化</strong><em>粘贴 · 格式化 · 验证 · 多语言</em></span>
       </button>
       <button class="brand-item active" data-page="qr.html">
-        <span class="logo small">▦</span>
+        <span class="logo small"><svg viewBox="0 0 21 21" aria-hidden="true"><path fill="#fff" fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2zM8 6h1v1H8zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM6 8h1v1H6zM6 10h1v1H6zM6 12h1v1H6zM6 14h1v1H6zM6 16h1v1H6zM6 18h1v1H6zM6 20h1v1H6zM9 1h1v1H9zM11 3h1v1h-1zM9 5h1v1H9zM12 2h1v1h-1zM10 8h1v1h-1zM12 9h1v1h-1zM9 11h1v1H9zM11 12h1v1h-1zM13 10h1v1h-1zM8 10h1v1H8zM16 9h1v1h-1zM18 11h1v1h-1zM15 12h1v1h-1zM17 14h1v1h-1zM19 16h1v1h-1zM9 18h1v1H9zM12 19h1v1h-1zM15 17h1v1h-1zM18 19h1v1h-1zM11 20h1v1h-1zM16 20h1v1h-1zM19 9h1v1h-1zM10 16h1v1h-1zM13 15h1v1h-1z"/></svg></span>
         <span class="brand-item-text"><strong>二维码 / 条码生成器</strong><em>QR Code · 条码</em></span>
         <span class="brand-check">✓</span>
       </button>
@@ -56,6 +56,7 @@
     </label>
     <button class="btn primary" id="btnGenerate">生成</button>
     <button class="btn" id="btnSample">载入示例</button>
+    <button class="btn" id="btnGs1Sample" title="载入一条 GS1 Digital Link 示例，用参数表生成 GS1 链接与二维码来测试">GS1 示例</button>
   </div>
   <div class="group options">
     <label>大小
@@ -104,6 +105,7 @@
         <span>GS1 参数</span>
         <span class="hint" id="gs1Count"></span>
         <span class="spacer"></span>
+        <button class="btn ghost small" id="btnGs1ResetNames" title="把所有 AI 的显示名称恢复成默认">恢复默认名称</button>
         <button class="btn ghost small" id="btnGs1Close" title="收起 GS1 参数">收起</button>
       </div>
       <div class="gs1-table" id="gs1Table"></div>
