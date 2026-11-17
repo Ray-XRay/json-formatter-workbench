@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark; /* 让原生下拉框（select 的弹出列表）按深色渲染，否则选项文字会黑底黑字看不见 */
   --bg: #0f1115;
   --panel: #171a21;
   --panel-2: #1e222c;
@@ -112,6 +113,9 @@ body {
   font-size: 13px;
   margin-left: 4px;
 }
+
+/* 下拉框的选项：显式给主题色，兜底 color-scheme 覆盖不到的浏览器 */
+select option { background-color: var(--panel); color: var(--text); }
 
 .check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .check input { accent-color: var(--accent); }
@@ -388,6 +392,7 @@ body {
 
 /* ---------- 浅色主题 ---------- */
 html[data-theme="light"] {
+  color-scheme: light;
   --bg: #f4f5f7;
   --panel: #ffffff;
   --panel-2: #eef0f3;
@@ -408,6 +413,7 @@ html[data-theme="light"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(
 
 /* ---------- 复古主题 ---------- */
 html[data-theme="retro"] {
+  color-scheme: light;
   --bg: #ece5d3;
   --panel: #f6f0dd;
   --panel-2: #e9e0c6;
@@ -432,6 +438,7 @@ html[data-theme="retro"] body { font-family: Georgia, "Songti SC", "SimSun", ser
 
 /* ---------- Oracle 主题 ---------- */
 html[data-theme="oracle"] {
+  color-scheme: dark;
   --bg: #0d0d0f;
   --panel: #17171b;
   --panel-2: #201f24;
@@ -454,6 +461,7 @@ html[data-theme="oracle"] .logo { background: linear-gradient(135deg, #c74634, #
 
 /* ---------- Oracle 白主题 ---------- */
 html[data-theme="oracle-light"] {
+  color-scheme: light;
   --bg: #f2f2f0;
   --panel: #ffffff;
   --panel-2: #f0efec;
@@ -477,6 +485,7 @@ html[data-theme="oracle-light"] .toast { background: #fff; box-shadow: 0 6px 24p
 
 /* ---------- DataGrip 主题（Darcula，加深） ---------- */
 html[data-theme="datagrip"] {
+  color-scheme: dark;
   --bg: #1e1e1e;
   --panel: #232324;
   --panel-2: #2c2c2e;
@@ -499,6 +508,7 @@ html[data-theme="datagrip"] .logo { background: linear-gradient(135deg, #3d7ab8,
 
 /* ---------- JetBrains 主题（IntelliJ Light 官方配色） ---------- */
 html[data-theme="jetbrains"] {
+  color-scheme: light;
   --bg: #f2f2f2;
   --panel: #ffffff;
   --panel-2: #e9eaee;

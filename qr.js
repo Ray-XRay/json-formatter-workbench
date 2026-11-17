@@ -32,16 +32,7 @@
   /* ---------- 各类型说明、示例 ---------- */
   var FORMATS = {
     qrcode: { label: 'QR Code', hint: '网址、文字都行，中文也可以。纠错级别越高越耐脏、耐遮挡，但码点越密。', sample: 'https://example.com', twoDim: true },
-    code128: { label: 'Code 128', hint: '字母、数字和符号都行，最常用的一维条码。', sample: 'HELLO-12345', oneDim: true },
-    code39: { label: 'Code 39', hint: '只支持大写字母、数字、空格和 - . $ / + %。', sample: 'ABC-123', oneDim: true },
-    ean13: { label: 'EAN-13', hint: '12 位数字（自动补校验位）或 13 位数字，商品条码。', sample: '590123412345', oneDim: true },
-    ean8: { label: 'EAN-8', hint: '7 位数字（自动补校验位）或 8 位数字。', sample: '1234567', oneDim: true },
-    upca: { label: 'UPC-A', hint: '11 位数字（自动补校验位）或 12 位数字，北美商品条码。', sample: '12345678901', oneDim: true },
-    itf14: { label: 'ITF-14', hint: '13 位数字（自动补校验位）或 14 位数字，外箱码，只支持数字。', sample: '1234567890123', oneDim: true },
-    'gs1-128': { label: 'GS1-128', hint: '用 (AI)数据 的格式写，如 (01)09501101530003(21)123456；括号里的数字是应用标识符 AI。', sample: '(01)09501101530003(21)123456', oneDim: true },
-    gs1datamatrix: { label: 'GS1 DataMatrix', hint: '同样用 (AI)数据 的格式，如 (01)09501101530003(21)123456；二维码形式，适合小件商品。', sample: '(01)09501101530003(21)123456', twoDim: true },
-    datamatrix: { label: 'Data Matrix', hint: '字母、数字都行，常用在小零件和医疗器械上。', sample: 'HELLO-DATAMATRIX', twoDim: true },
-    pdf417: { label: 'PDF417', hint: '可放较多文字，身份证、登机牌常用。', sample: 'PDF417 Example 12345', twoDim: true }
+    code128: { label: '条码', hint: '字母、数字和符号都行，最常用的一维条码。', sample: 'HELLO-12345', oneDim: true }
   };
 
   function currentFormat() { return $('formatSelect').value; }
@@ -70,12 +61,6 @@
     var msg = String((e && e.message) || e);
     msg = msg.replace(/^(bwipp?\.[\w]+#\d+:\s*|bwip-js:\s*)/, '');
     if (/text not specified/i.test(msg)) return '内容为空，先输入要编码的内容';
-    if (/EAN-13 must be 12 or 13 digits/i.test(msg)) return 'EAN-13 必须是 12 或 13 位数字';
-    if (/EAN-8 must be 7 or 8 digits/i.test(msg)) return 'EAN-8 必须是 7 或 8 位数字';
-    if (/UPC-A must be 11 or 12 digits/i.test(msg)) return 'UPC-A 必须是 11 或 12 位数字';
-    if (/ITF-14 must be 13 or 14 digits/i.test(msg)) return 'ITF-14 必须是 13 或 14 位数字';
-    if (/Code 39 must contain only/i.test(msg)) return 'Code 39 只支持大写字母、数字、空格和 - . $ / + %';
-    if (/AIs must start with/i.test(msg)) return 'GS1 内容要写成 (AI)数据 的格式，如 (01)09501101530003(21)123456';
     if (/Maximum length exceeded/i.test(msg)) return '内容太长，超出该类型的容量上限';
     return msg;
   }
@@ -114,7 +99,7 @@
   }
 
   function fileName(ext) {
-    return (currentFormat() === 'qrcode' ? 'qrcode' : 'barcode-' + currentFormat()) + '.' + ext;
+    return (currentFormat() === 'qrcode' ? 'qrcode' : 'barcode') + '.' + ext;
   }
 
   function downloadBlob(blob, name) {
