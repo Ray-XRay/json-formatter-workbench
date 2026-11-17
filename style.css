@@ -853,3 +853,15 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
 .pw-alts { display: flex; flex-direction: column; gap: 8px; }
 .pw-alt { width: 100%; padding: 10px 12px; font-family: var(--mono); font-size: 14px; word-break: break-all; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 .pw-alt:hover { border-color: var(--accent); }
+
+/* ---------- 密码生成器：随机数与检查器 ---------- */
+.pw-numrange { display: flex; align-items: center; gap: 8px; }
+.pw-numrange input[type="number"] { width: 100px; }
+.pw-pinbtns { display: flex; gap: 8px; }
+.pw-checker { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pw-checker-head { font-size: 13px; font-weight: 600; }
+.pw-checker-row { display: flex; gap: 8px; }
+.pw-checker-row input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 13px; font-family: var(--mono); }
+.pw-checker-row input:focus { border-color: var(--accent); outline: 0; }
+.pw-check-verdict { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.pw-numinfo { line-height: 1.6; }
