@@ -541,6 +541,50 @@
     }
   }
 
+  /* 助记词复制成带格式的表格：粘贴到备忘录/Word 这类富文本里仍是带序号的小格子；
+     同时保留纯文本，粘贴到钱包还是空格隔开的单词 */
+  function buildMnemonicHtml(mnemonic) {
+    var words = mnemonic.split(' ');
+    var html = '<table style="border-collapse:collapse;font-family:monospace;font-size:14px">';
+    for (var r = 0; r < words.length; r += 3) {
+      html += '<tr>';
+      for (var c = 0; c < 3 && r + c < words.length; c++) {
+        html += '<td style="border:1px solid #c8c8c8;padding:8px 12px"><span style="color:#888888">' + (r + c + 1) + '</span>&nbsp;&nbsp;<b>' + words[r + c] + '</b></td>';
+      }
+      html += '</tr>';
+    }
+    return html + '</table>';
+  }
+  function fallbackCopyHtml(html, text, done) {
+    var div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.innerHTML = html;
+    div.style.position = 'fixed';
+    div.style.opacity = '0';
+    document.body.appendChild(div);
+    var range = document.createRange();
+    range.selectNodeContents(div);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    sel.removeAllRanges();
+    document.body.removeChild(div);
+    done(ok);
+  }
+  function copyMnemonic(text, done) {
+    var html = buildMnemonicHtml(text);
+    if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+      var item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' })
+      });
+      navigator.clipboard.write([item]).then(function () { done(true); }, function () { fallbackCopyHtml(html, text, done); });
+    } else {
+      fallbackCopyHtml(html, text, done);
+    }
+  }
   function copyText(text, done) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallbackCopy(text, done); });
@@ -555,6 +599,7 @@
       if (ok) { showToast('已复制' + what); setStatus('ok', '已复制' + what); }
       else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
     }
+    if ($('modeSelect').value === 'mnemonic') { copyMnemonic(currentOutput, done); return; }
     copyText(currentOutput, done);
   }
   function fallbackCopy(text, done) {
@@ -632,7 +677,7 @@
   });
   $('mnemonicPasteGrid').addEventListener('click', function () {
     if (!pastedMnemonic) return;
-    copyText(pastedMnemonic, function (ok) {
+    copyMnemonic(pastedMnemonic, function (ok) {
       if (ok) { showToast('已复制助记词'); setStatus('ok', '已复制助记词'); }
       else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
     });
@@ -655,6 +700,7 @@
     mnemonicFromEntropy: mnemonicFromEntropy,
     validateMnemonic: validateMnemonic,
     analyzePassword: analyzePassword,
+    buildMnemonicHtml: buildMnemonicHtml,
     bip39WordCount: (typeof BIP39_WORDS !== 'undefined') ? BIP39_WORDS.length : 0,
     bip39HasWord: function (w) { return (typeof BIP39_WORDS !== 'undefined') && BIP39_WORDS.indexOf(w) !== -1; }
   };
