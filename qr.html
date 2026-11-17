@@ -16,7 +16,12 @@
     </div>
   </div>
   <div class="top-actions">
-    <a class="btn ghost small" href="index.html">← Code 格式化</a>
+    <label class="theme-label">工具
+      <select id="modeSelect">
+        <option value="index.html">Code 格式化</option>
+        <option value="qr.html" selected>二维码 / 条码</option>
+      </select>
+    </label>
     <label class="theme-label">主题
       <select id="themeSelect">
         <option value="dark" selected>深色</option>
@@ -85,6 +90,8 @@
     </div>
     <div class="qr-hint" id="formatHint"></div>
   </section>
+
+  <div class="divider" id="divider" title="拖动调整左右宽度"></div>
 
   <section class="pane pane-right" id="paneRight">
     <div class="pane-head">

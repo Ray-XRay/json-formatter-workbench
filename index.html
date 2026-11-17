@@ -16,7 +16,12 @@
     </div>
   </div>
   <div class="top-actions">
-    <a class="btn ghost small" href="qr.html" title="二维码 / 条码生成器：QR Code、一维条码、GS1">二维码 / 条码</a>
+    <label class="theme-label">工具
+      <select id="modeSelect">
+        <option value="index.html" selected>Code 格式化</option>
+        <option value="qr.html">二维码 / 条码</option>
+      </select>
+    </label>
     <label class="theme-label">主题
       <select id="themeSelect">
         <option value="dark" selected>深色</option>
@@ -45,25 +50,27 @@
     </label>
     <button class="btn primary" id="btnFormat">格式化</button>
     <button class="btn" id="btnMinify">压缩</button>
-    <button class="btn" id="btnValidate">验证</button>
-    <button class="btn" id="btnRepair" title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释">修复 JSON</button>
-  </div>
-  <div class="group options">
-    <label>缩进
-      <select id="indentSelect">
-        <option value="2" selected>2 空格</option>
-        <option value="4">4 空格</option>
-        <option value="tab">Tab</option>
-      </select>
-    </label>
-    <label class="check" id="sortKeysWrap"><input type="checkbox" id="sortKeys"> 按键名排序</label>
-    <label class="check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
   </div>
   <div class="group">
-    <button class="btn" id="btnJpToggle" title="展开 JSONPath 查询栏">JSONPath</button>
     <div class="more-wrap">
-      <button class="btn" id="btnMore" aria-expanded="false" title="更多工具：生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
+      <button class="btn" id="btnMore" aria-expanded="false" title="更多工具：验证、修复、缩进、JSONPath、复制 Markdown、下载、生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
       <div class="more-menu" id="moreMenu" hidden>
+        <button class="menu-item" id="btnValidate">验证</button>
+        <button class="menu-item" id="btnRepair" title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释">修复 JSON</button>
+        <div class="menu-row">
+          <span class="menu-label">缩进</span>
+          <select id="indentSelect">
+            <option value="2" selected>2 空格</option>
+            <option value="4">4 空格</option>
+            <option value="tab">Tab</option>
+          </select>
+        </div>
+        <label class="menu-row check" id="sortKeysWrap"><input type="checkbox" id="sortKeys"> 按键名排序</label>
+        <label class="menu-row check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
+        <button class="menu-item" id="btnJpToggle" title="展开 JSONPath 查询栏">JSONPath 查询</button>
+        <button class="menu-item" id="btnCopyMarkdown" title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色">复制 Markdown</button>
+        <button class="menu-item" id="btnDownload">下载</button>
+        <div class="menu-sep"></div>
         <div class="menu-row" id="typeRow">
           <span class="menu-label">生成类型</span>
           <select id="typeLang">
@@ -96,8 +103,6 @@
       <button class="seg-btn" id="viewTree" role="tab">树形</button>
     </div>
     <button class="btn" id="btnCopy">复制结果</button>
-    <button class="btn" id="btnCopyMarkdown" title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色">复制 Markdown</button>
-    <button class="btn" id="btnDownload">下载</button>
   </div>
 </section>
 

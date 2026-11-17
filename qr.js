@@ -29,6 +29,60 @@
   }
   $('themeSelect').addEventListener('change', function () { applyTheme(this.value); });
 
+  /* 顶栏工具切换：选 Code 格式化就跳回 index.html */
+  $('modeSelect').addEventListener('change', function () {
+    if (this.value !== 'qr.html') location.href = this.value;
+  });
+
+  /* ---------- 可拖动分隔条（与格式化页同款，比例分开存） ---------- */
+  (function initResizer() {
+    var panes = $('panes'), paneLeft = $('paneLeft'), divider = $('divider');
+    var saved = null;
+    try { saved = localStorage.getItem('qr-wb-split'); } catch (e) {}
+    if (saved) {
+      var pct = Math.min(75, Math.max(25, Number(saved)));
+      if (pct) paneLeft.style.width = pct + '%';
+    }
+    divider.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      divider.classList.add('dragging');
+      try { divider.setPointerCapture(e.pointerId); } catch (err) {}
+      var vertical = window.innerWidth <= 820;
+      var rect = panes.getBoundingClientRect();
+      var startX = e.clientX;
+      var startY = e.clientY;
+      var startW = paneLeft.getBoundingClientRect().width;
+      var startH = paneLeft.getBoundingClientRect().height;
+      if (!vertical) paneLeft.style.height = '';
+
+      function onMove(ev) {
+        var p;
+        if (vertical) {
+          p = (startH + (ev.clientY - startY)) / rect.height * 100;
+          paneLeft.style.height = Math.min(75, Math.max(25, p)) + '%';
+        } else {
+          p = (startW + (ev.clientX - startX)) / rect.width * 100;
+          p = Math.min(75, Math.max(25, p));
+          paneLeft.style.width = p + '%';
+        }
+      }
+      function onUp() {
+        divider.classList.remove('dragging');
+        divider.removeEventListener('pointermove', onMove);
+        divider.removeEventListener('pointerup', onUp);
+        try {
+          if (vertical) {
+            localStorage.setItem('qr-wb-split-v', paneLeft.style.height);
+          } else {
+            localStorage.setItem('qr-wb-split', parseFloat(paneLeft.style.width));
+          }
+        } catch (err) {}
+      }
+      divider.addEventListener('pointermove', onMove);
+      divider.addEventListener('pointerup', onUp);
+    });
+  })();
+
   /* ---------- 各类型说明、示例 ---------- */
   var FORMATS = {
     qrcode: { label: 'QR Code', hint: '网址、文字都行，中文也可以。纠错级别越高越耐脏、耐遮挡，但码点越密。生成尺寸固定为小 / 中 / 大，不随内容变长而变大。', sample: 'https://example.com', twoDim: true },

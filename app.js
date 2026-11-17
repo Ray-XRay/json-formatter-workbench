@@ -168,6 +168,11 @@
     applyTheme(this.value);
   });
 
+  /* 顶栏工具切换：选二维码 / 条码就跳到 qr.html */
+  $('modeSelect').addEventListener('change', function () {
+    if (this.value !== 'index.html') location.href = this.value;
+  });
+
   /* ---------- 可拖动分隔条 ---------- */
   function initResizer() {
     var saved = null;
@@ -2422,6 +2427,10 @@
     var menu = $('moreMenu');
     menu.hidden = !menu.hidden;
     $('btnMore').setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  // 点菜单里的动作项后自动收起菜单（下拉框 / 勾选行不收）
+  $('moreMenu').addEventListener('click', function (e) {
+    if (e.target.closest('.menu-item')) closeMore();
   });
   document.addEventListener('click', function (e) {
     if (!$('moreMenu').hidden && !e.target.closest('.more-wrap')) closeMore();

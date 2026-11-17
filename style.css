@@ -665,6 +665,9 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
   font-size: 13px;
 }
 .menu-label { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+.menu-row.check { border-radius: 6px; cursor: pointer; }
+.menu-row.check:hover { background: var(--panel-2); }
 
 /* ---------- 输入栏头部的操作按钮 ---------- */
 .pane-head .btn { flex: none; }
