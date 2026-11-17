@@ -3,22 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>小巴到站</title>
-<meta name="description" content="香港專線小巴實時到站看板：輸入路線號碼，選方向、選站，即見下三班車還有幾分鐘到。數據來自政府資料一線通 data.gov.hk，每分鐘更新。">
+<title>到站看板</title>
+<meta name="description" content="小巴、巴士、港鐵實時到站看板：輸路線號碼、選方向、選站，即見下三班車還有幾分鐘到。數據來自政府資料一線通 data.gov.hk，每分鐘更新。">
 <meta name="theme-color" content="#0f1115">
 <link rel="canonical" href="https://myworkbench-tools.vercel.app/gmb.html">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/favicon.svg">
 <meta property="og:type" content="website">
-<meta property="og:title" content="小巴到站">
-<meta property="og:description" content="專線小巴實時到站看板：輸路線、選站，即見下三班車還有幾分鐘到。">
+<meta property="og:title" content="到站看板">
+<meta property="og:description" content="小巴、巴士、港鐵實時到站看板：輸路線、選站，即見下三班車還有幾分鐘到。">
 <meta property="og:url" content="https://myworkbench-tools.vercel.app/gmb.html">
 <meta property="og:image" content="https://myworkbench-tools.vercel.app/og.svg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="小巴到站">
-<meta name="twitter:description" content="專線小巴實時到站看板：輸路線、選站，即見下三班車還有幾分鐘到。">
+<meta name="twitter:title" content="到站看板">
+<meta name="twitter:description" content="小巴、巴士、港鐵實時到站看板：輸路線、選站，即見下三班車還有幾分鐘到。">
 <meta name="twitter:image" content="https://myworkbench-tools.vercel.app/og.svg">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -29,8 +29,8 @@
       <button class="brand" id="brandBtn" aria-haspopup="true" aria-expanded="false" title="切换工具">
         <span class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="13" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="7.5" cy="18.5" r="1.8"/><circle cx="16.5" cy="18.5" r="1.8"/></g></svg></span>
         <span class="brand-text">
-          <span class="brand-title">小巴到站</span>
-          <span class="brand-sub">專線小巴實時到站 · data.gov.hk</span>
+          <span class="brand-title">到站看板</span>
+          <span class="brand-sub">小巴 · 巴士 · 港鐵實時到站</span>
         </span>
         <span class="brand-chev">▾</span>
       </button>
@@ -50,7 +50,7 @@
       </button>
       <button class="brand-item active" data-page="gmb.html">
         <span class="logo small"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="13" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="7.5" cy="18.5" r="1.8"/><circle cx="16.5" cy="18.5" r="1.8"/></g></svg></span>
-        <span class="brand-item-text"><strong>小巴到站</strong><em>專線小巴實時到站</em></span>
+        <span class="brand-item-text"><strong>到站看板</strong><em>小巴 · 巴士 · 港鐵實時到站</em></span>
         <span class="brand-check">✓</span>
       </button>
     </div>
@@ -73,18 +73,32 @@
 <main class="gmb-wrap">
   <!-- 控制區置頂且吸頂：路線、方向、上車站都在第一屏，不用滑到底 -->
   <section class="gmb-card gmb-controls" id="routeCard">
-    <div class="gmb-search-row">
+    <div class="gmb-mode" id="modeTabs" role="tablist" aria-label="交通工具">
+      <button class="seg-btn active" type="button" data-mode="gmb">專線小巴</button>
+      <button class="seg-btn" type="button" data-mode="bus">巴士</button>
+      <button class="seg-btn" type="button" data-mode="mtr">港鐵</button>
+    </div>
+    <div class="gmb-search-row" id="busRow">
       <span class="gmb-route-code" id="routeCode">87M</span>
       <label class="gmb-route-label">
-        <input type="text" id="routeInput" value="87M" placeholder="例如 87M" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="小巴路線號碼">
+        <input type="text" id="routeInput" value="87M" placeholder="例如 87M" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="路線號碼">
       </label>
       <button class="btn primary" id="btnSearch">查路線</button>
       <button class="btn" id="btnRefresh" title="重新查一次到站時間">刷新</button>
       <span class="hint" id="routeRegion"></span>
       <span class="hint" id="routeUpdated"></span>
     </div>
+    <div class="gmb-mtr-row" id="mtrRow" hidden>
+      <label class="gmb-stop-label">綫
+        <select id="lineSelect" aria-label="港鐵綫"></select>
+      </label>
+      <label class="gmb-stop-label">站
+        <select id="stationSelect" aria-label="港鐵站"></select>
+      </label>
+      <button class="btn" id="btnRefreshMtr" type="button" title="重新查一次班次">刷新</button>
+    </div>
     <div class="gmb-dir" id="dirBtns" role="tablist" aria-label="方向"></div>
-    <label class="gmb-stop-label">上車站
+    <label class="gmb-stop-label" id="stopLabel">上車站
       <select id="stopSelect" aria-label="上車站"></select>
     </label>
     <div class="gmb-chips" id="recentChips"></div>
@@ -112,7 +126,7 @@
     </div>
   </section>
 
-  <details class="gmb-card gmb-all-stops">
+  <details class="gmb-card gmb-all-stops" id="allStops">
     <summary>全部站點（<span id="stopCount">—</span> 站）· 點開用列表切換</summary>
     <div class="gmb-stop-head">
       <input type="text" id="stopFilter" placeholder="搜尋站名…" aria-label="搜尋站名" spellcheck="false">
@@ -120,7 +134,7 @@
     <div class="stop-list" id="stopList"></div>
   </details>
 
-  <p class="hint gmb-foot">只支援專線小巴（綠色小巴），例如 87M、87A、1、12；九巴 / 城巴不在這套數據裡。數據：運輸署經 data.gov.hk（data.etagmb.gov.hk），每分鐘更新，僅供參考。</p>
+  <p class="hint gmb-foot">小巴只支援專線小巴（綠色小巴），例如 87M、87A；巴士先試九巴、沒有再試城巴；港鐵選綫、選站即見下三班車。數據：運輸署 / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。</p>
 </main>
 
 <footer class="statusbar">

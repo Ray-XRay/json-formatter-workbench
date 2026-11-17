@@ -945,3 +945,10 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
   .gmb-dir .seg-btn { min-width: 0; font-size: 12px; padding: 8px 10px; }
   .gmb-route-label input { width: 110px; }
 }
+
+/* ---------- 到站看板 v1.12：模式切換 + 港鐵行 ---------- */
+.gmb-mode { display: flex; gap: 6px; margin-bottom: 12px; }
+.gmb-mode .seg-btn { flex: 1; }
+.gmb-mtr-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.gmb-mtr-row .gmb-stop-label { margin-top: 0; flex: 1; }
+.gmb-mtr-row .gmb-stop-label select { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; }
