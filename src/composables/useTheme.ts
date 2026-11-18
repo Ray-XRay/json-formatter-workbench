@@ -143,7 +143,7 @@ function installMediaListener(): void {
   else mq.addListener(onChange)
 }
 
-// Initial paint: the inline script in index.html already set the theme before
+// Initial paint: public/theme-init.js already set the theme before
 // first paint; this is a no-op safety net that keeps DOM and state in sync.
 applyTheme(false)
 

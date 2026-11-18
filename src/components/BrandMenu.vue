@@ -1,0 +1,129 @@
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  Braces,
+  BusFront,
+  Check,
+  ChevronDown,
+  KeyRound,
+  Layers,
+  QrCode,
+  type LucideIcon,
+} from 'lucide-vue-next'
+
+interface ToolEntry {
+  name: string
+  path: string
+  label: string
+  icon: LucideIcon
+}
+
+/** The four tools, in the same order as the 1.x brand menu. */
+const TOOLS: readonly ToolEntry[] = [
+  { name: 'json-sql', path: '/json-sql', label: 'JSON / SQL 工作台', icon: Braces },
+  { name: 'password', path: '/password', label: '密码与助记词', icon: KeyRound },
+  { name: 'qr-barcode', path: '/qr-barcode', label: 'QR / 条码', icon: QrCode },
+  { name: 'gmb', path: '/gmb', label: '到站看板', icon: BusFront },
+]
+
+const route = useRoute()
+const open = ref(false)
+const menuRef = ref<HTMLElement | null>(null)
+
+function toggle(): void {
+  open.value = !open.value
+}
+
+function close(): void {
+  open.value = false
+}
+
+function onDocumentClick(e: MouseEvent): void {
+  if (menuRef.value && !menuRef.value.contains(e.target as Node)) close()
+}
+
+function onEscape(e: KeyboardEvent): void {
+  if (e.key === 'Escape') close()
+}
+
+onMounted((): void => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('keydown', onEscape)
+})
+
+onUnmounted((): void => {
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('keydown', onEscape)
+})
+</script>
+
+<template>
+  <div ref="menuRef" class="relative shrink-0">
+    <button
+      type="button"
+      aria-label="切换工具"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      class="flex h-9 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-accent"
+      @click="toggle()"
+    >
+      <span
+        class="logo-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm ring-1 ring-black/10"
+      >
+        <Layers class="h-4 w-4" />
+      </span>
+      <span class="hidden text-sm font-semibold tracking-tight sm:inline">MyWorkbench</span>
+      <span
+        class="hidden shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline"
+      >
+        2.0
+      </span>
+      <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
+
+    <Transition name="brand-menu">
+      <div
+        v-if="open"
+        role="menu"
+        aria-label="切换工具"
+        class="absolute left-0 top-11 z-50 w-56 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl"
+      >
+        <RouterLink
+          v-for="tool in TOOLS"
+          :key="tool.name"
+          :to="tool.path"
+          role="menuitem"
+          class="flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors hover:bg-accent"
+          @click="close()"
+        >
+          <component :is="tool.icon" class="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span class="flex-1 truncate">{{ tool.label }}</span>
+          <Check v-if="route.name === tool.name" class="h-4 w-4 shrink-0 text-primary" />
+        </RouterLink>
+        <div class="border-t border-border px-3 py-2">
+          <span
+            class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
+          >
+            2.0.0-alpha.3
+          </span>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>
+
+<style scoped>
+.brand-menu-enter-active,
+.brand-menu-leave-active {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.brand-menu-enter-from,
+.brand-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+</style>

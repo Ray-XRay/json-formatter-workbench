@@ -2,6 +2,17 @@
 
 MyWorkbench 2.0 的版本记录。2.0 与 1.x（`json-formatter-workbench` 仓库 main / vue 分支）是不同的技术栈与代码库，版本号从 2.0.0-alpha 起步。
 
+## [2.0.0-alpha.3] - 2026-11-18
+
+合流版：打磨版的壳（2.0.0-alpha.2）+ 迁移版的功能（vue2-phase2）+ 导航换回品牌下拉：
+
+- **四个工具真功能上线**：JSON / SQL 工作台（格式化/压缩/校验带行列号、树形视图、按键名排序、JSONPath、生成类型、转 YAML、JSON 对比、分享链接 `#j=`、历史与草稿；SQL 用 sql-formatter，失败回退轻量版；Python / Go / Java 轻量整理）、密码与助记词（随机密码、BIP39 助记词生成与查看校验、随机数、检查我的密码）、QR / 条码（QR 尺寸精确固定 200 / 300 / 400 px、Code 128、GS1 参数表、生成历史）、到站看板（小巴/巴士/港铁实时到站、同编号多来源任选、30 秒自动刷新、只有分钟数变了的卡才播动效）。
+- **导航换回品牌下拉**：拿掉侧边栏（4 个工具用不着侧边栏、占宽）；顶栏左上角品牌块（logo + 站名，主题渐变），点开下拉框列出四个工具（带图标，当前打勾 ✓），手机端同样用品牌下拉，不用汉堡菜单；顶栏其余部分（面包屑、⌘K、主题下拉）不动，命令面板保留。
+- **主题**：Light / Dark / Tokyo Night / Paper / Terminal / Sakura 六档 + 跟随系统；首绘主题脚本改成同源外链 `public/theme-init.js`（与 CSP 配合，`script-src 'self'`，无 `unsafe-eval`、无 `unsafe-inline`）。
+- **安全头**：vercel.json 加 CSP（`connect-src` 只放行三个政府 ETA 域名）与 nosniff / Referrer-Policy / Permissions-Policy。
+- **修复（随迁移带入）**：切到 SQL / Python / Go / Java 后格式化结果看不见——语言切到非 JSON 时强制回代码视图；树形仍只属于 JSON。
+- **依赖**：sql-formatter 15.9.0、bwip-js 4.11.4 均经 npm 本地打包进构建产物，零 CDN；bwip-js 类型用本地 `src/vendor/bwip-js.d.ts`。
+
 ## [2.0.0-alpha.2] - 2026-11-18 (c1599542)
 
 视觉打磨 + 主题系统升级（骨架仍不含业务逻辑）：

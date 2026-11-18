@@ -5,20 +5,16 @@ import {
   Braces,
   BusFront,
   CheckCircle2,
-  ChevronRight,
   KeyRound,
-  Menu,
-  PanelLeft,
   QrCode,
   Search,
   type LucideIcon,
 } from 'lucide-vue-next'
-import Sidebar from '../components/Sidebar.vue'
+import BrandMenu from '../components/BrandMenu.vue'
 import CommandPalette from '../components/CommandPalette.vue'
 import ErrorBoundary from '../components/ErrorBoundary.vue'
 import ThemeMenu from '../components/ThemeMenu.vue'
 import { useCommandPalette } from '../composables/useCommandPalette'
-import { useSidebar } from '../composables/useSidebar'
 import { useToast } from '../composables/useToast'
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {
@@ -29,7 +25,6 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
 }
 
 const route = useRoute()
-const { toggleMobile, toggleCollapsed } = useSidebar()
 const { open, toggle } = useCommandPalette()
 const { toasts, dismiss } = useToast()
 
@@ -52,73 +47,46 @@ onUnmounted((): void => {
 </script>
 
 <template>
-  <div class="flex h-dvh w-full bg-background text-foreground">
-    <Sidebar />
+  <div class="flex h-dvh w-full flex-col bg-background text-foreground">
+    <header
+      class="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card/70 px-3 backdrop-blur sm:px-4"
+    >
+      <BrandMenu />
 
-    <div class="flex min-w-0 flex-1 flex-col">
-      <header
-        class="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card/70 px-3 backdrop-blur sm:px-4"
+      <nav aria-label="面包屑" class="flex min-w-0 items-center gap-1 text-sm">
+        <component :is="routeIcon" class="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span class="truncate font-medium">{{ route.meta.title }}</span>
+      </nav>
+
+      <div class="flex-1" />
+
+      <button
+        type="button"
+        aria-label="打开命令面板 (Ctrl+K)"
+        class="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:w-56"
+        @click="open()"
       >
-        <button
-          type="button"
-          aria-label="打开菜单"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
-          @click="toggleMobile()"
+        <Search class="h-4 w-4 shrink-0" />
+        <span class="hidden flex-1 text-left sm:inline">搜索工具…</span>
+        <kbd
+          class="hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs font-medium sm:inline-block"
         >
-          <Menu class="h-5 w-5" />
-        </button>
+          ⌘K
+        </kbd>
+      </button>
 
-        <button
-          type="button"
-          aria-label="折叠侧边栏"
-          class="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:inline-flex"
-          @click="toggleCollapsed()"
-        >
-          <PanelLeft class="h-5 w-5" />
-        </button>
+      <ThemeMenu />
+    </header>
 
-        <nav aria-label="面包屑" class="flex min-w-0 items-center gap-1 text-sm">
-          <RouterLink
-            to="/json-sql"
-            class="hidden shrink-0 text-muted-foreground transition-colors hover:text-foreground sm:inline"
-          >
-            MyWorkbench
-          </RouterLink>
-          <ChevronRight class="hidden h-4 w-4 shrink-0 text-muted-foreground sm:inline-block" />
-          <component :is="routeIcon" class="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span class="truncate font-medium">{{ route.meta.title }}</span>
-        </nav>
-
-        <div class="flex-1" />
-
-        <button
-          type="button"
-          aria-label="打开命令面板 (Ctrl+K)"
-          class="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:w-56"
-          @click="open()"
-        >
-          <Search class="h-4 w-4 shrink-0" />
-          <span class="hidden flex-1 text-left sm:inline">搜索工具…</span>
-          <kbd
-            class="hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs font-medium sm:inline-block"
-          >
-            ⌘K
-          </kbd>
-        </button>
-
-        <ThemeMenu />
-      </header>
-
-      <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-        <router-view v-slot="{ Component }">
-          <Transition name="route-fade" mode="out-in">
-            <ErrorBoundary :key="$route.fullPath">
-              <component :is="Component" />
-            </ErrorBoundary>
-          </Transition>
-        </router-view>
-      </main>
-    </div>
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+      <router-view v-slot="{ Component }">
+        <Transition name="route-fade" mode="out-in">
+          <ErrorBoundary :key="$route.fullPath">
+            <component :is="Component" />
+          </ErrorBoundary>
+        </Transition>
+      </router-view>
+    </main>
 
     <div class="pointer-events-none fixed right-4 top-4 z-[100]">
       <TransitionGroup name="toast" tag="div" class="flex flex-col gap-2">
