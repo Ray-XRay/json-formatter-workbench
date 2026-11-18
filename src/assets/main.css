@@ -103,97 +103,111 @@ html[data-theme='tokyonight'] {
   --code-punct: 193 100% 77%;
 }
 
-/* Paper — warm paper cream, amber accent. */
-html[data-theme='paper'] {
-  --background: 42 41% 93%;
-  --foreground: 20 6% 15%;
-  --card: 48 100% 98%;
-  --card-foreground: 20 6% 15%;
-  --popover: 48 100% 98%;
-  --popover-foreground: 20 6% 15%;
-  --primary: 32 90% 37%;
-  --primary-foreground: 43 100% 96%;
-  --secondary: 43 40% 90%;
-  --secondary-foreground: 20 6% 15%;
-  --muted: 43 40% 90%;
-  --muted-foreground: 25 5% 45%;
-  --accent: 43 40% 90%;
-  --accent-foreground: 20 6% 15%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 40 29% 86%;
-  --input: 40 29% 86%;
-  --ring: 32 90% 37%;
-  --brand-1: 32 94% 46%;
-  --brand-2: 19 91% 37%;
-  --code-key: 32 90% 29%;
-  --code-string: 142 71% 34%;
-  --code-number: 19 91% 37%;
-  --code-bool: 271 76% 45%;
-  --code-null: 346 77% 41%;
-  --code-punct: 25 5% 45%;
+/* Catppuccin Mocha — 官方配色原样：底 #1e1e2e、面板 #181825（mantle）、
+ * 文字 #cdd6f4、次要 #a6adc8、蓝 #89b4fa、淡紫 #cba6f7、粉 #f5c2e7、
+ * 绿 #a6e3a1、黄 #f9e2af、红 #f38ba8、橙 #fab387、青 #94e2d5。
+ * 主色取蓝，品牌渐变淡紫→粉；语法色按官方编辑器配色（键淡紫 /
+ * 字符串绿 / 数字橙 / 布尔粉 / 空值红 / 标点 overlay2）。 */
+html[data-theme='catppuccin'] {
+  --background: 240 21% 15%;
+  --foreground: 226 64% 88%;
+  --card: 240 21% 12%;
+  --card-foreground: 226 64% 88%;
+  --popover: 240 21% 12%;
+  --popover-foreground: 226 64% 88%;
+  --primary: 217 92% 76%;
+  --primary-foreground: 240 21% 15%;
+  --secondary: 237 16% 23%;
+  --secondary-foreground: 226 64% 88%;
+  --muted: 237 16% 23%;
+  --muted-foreground: 228 24% 72%;
+  --accent: 237 16% 23%;
+  --accent-foreground: 226 64% 88%;
+  --destructive: 343 81% 75%;
+  --destructive-foreground: 240 21% 15%;
+  --border: 237 16% 23%;
+  --input: 237 16% 23%;
+  --ring: 217 92% 76%;
+  --brand-1: 267 84% 81%;
+  --brand-2: 316 72% 86%;
+  --code-key: 267 84% 81%;
+  --code-string: 115 54% 76%;
+  --code-number: 23 92% 76%;
+  --code-bool: 316 72% 86%;
+  --code-null: 343 81% 75%;
+  --code-punct: 228 17% 64%;
 }
 
-/* Terminal — phosphor green on near-black. */
-html[data-theme='terminal'] {
-  --background: 120 23% 3%;
-  --foreground: 135 65% 80%;
-  --card: 120 21% 5%;
-  --card-foreground: 135 65% 80%;
-  --popover: 120 21% 5%;
-  --popover-foreground: 135 65% 80%;
-  --primary: 142 71% 45%;
-  --primary-foreground: 120 23% 3%;
-  --secondary: 120 24% 8%;
-  --secondary-foreground: 135 65% 80%;
-  --muted: 120 24% 8%;
-  --muted-foreground: 134 19% 45%;
-  --accent: 120 24% 8%;
-  --accent-foreground: 135 65% 80%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 120 23% 3%;
-  --border: 130 19% 14%;
-  --input: 130 19% 14%;
-  --ring: 142 71% 45%;
-  --brand-1: 142 71% 45%;
-  --brand-2: 142 76% 60%;
-  --code-key: 142 76% 60%;
-  --code-string: 142 77% 73%;
-  --code-number: 45 96% 64%;
-  --code-bool: 187 92% 69%;
-  --code-null: 0 91% 71%;
-  --code-punct: 134 19% 45%;
+/* Gruvbox Dark — 官方配色原样：底 #282828、面板 #1d2021（bg0_h）、
+ * 文字 #ebdbb2、次要 #a89984、红 #cc241d、绿 #98971a、黄 #d79921、
+ * 蓝 #458588、紫 #b16286、青 #689d6a、橙 #d65d0e。
+ * 主色与品牌渐变取橙→黄；按钮底色用官方亮橙 #fe8019（标准橙
+ * #d65d0e 做按钮底时任何文字色都过不了 4.5:1，亮橙可到 5.84:1）；
+ * 语法色按官方编辑器配色，用亮色系（键亮蓝 / 字符串亮绿 /
+ * 数字亮紫 / 布尔亮橙 / 空值亮红 / 标点灰）。 */
+html[data-theme='gruvbox'] {
+  --background: 0 0% 16%;
+  --foreground: 43 59% 81%;
+  --card: 195 7% 12%;
+  --card-foreground: 43 59% 81%;
+  --popover: 195 7% 12%;
+  --popover-foreground: 43 59% 81%;
+  --primary: 27 99% 55%;
+  --primary-foreground: 0 0% 16%;
+  --secondary: 20 5% 22%;
+  --secondary-foreground: 43 59% 81%;
+  --muted: 20 5% 22%;
+  --muted-foreground: 35 17% 59%;
+  --accent: 20 5% 22%;
+  --accent-foreground: 43 59% 81%;
+  --destructive: 2 75% 46%;
+  --destructive-foreground: 43 59% 81%;
+  --border: 20 5% 22%;
+  --input: 20 5% 22%;
+  --ring: 27 99% 55%;
+  --brand-1: 24 88% 45%;
+  --brand-2: 40 73% 49%;
+  --code-key: 157 16% 58%;
+  --code-string: 61 66% 44%;
+  --code-number: 344 47% 68%;
+  --code-bool: 27 99% 55%;
+  --code-null: 6 96% 59%;
+  --code-punct: 35 17% 59%;
 }
 
-/* Sakura — soft pink, lavender accent. */
-html[data-theme='sakura'] {
-  --background: 335 71% 97%;
-  --foreground: 335 37% 18%;
-  --card: 336 100% 98%;
-  --card-foreground: 335 37% 18%;
-  --popover: 336 100% 98%;
-  --popover-foreground: 335 37% 18%;
-  --primary: 332 81% 51%;
-  --primary-foreground: 347 100% 97%;
-  --secondary: 335 71% 95%;
-  --secondary-foreground: 335 37% 18%;
-  --muted: 335 71% 95%;
-  --muted-foreground: 330 21% 52%;
-  --accent: 335 71% 95%;
-  --accent-foreground: 335 37% 18%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 332 55% 90%;
-  --input: 332 55% 90%;
-  --ring: 332 81% 51%;
-  --brand-1: 330 81% 60%;
-  --brand-2: 271 81% 56%;
-  --code-key: 334 78% 36%;
-  --code-string: 142 71% 34%;
-  --code-number: 19 91% 37%;
-  --code-bool: 271 76% 45%;
-  --code-null: 346 77% 41%;
-  --code-punct: 330 21% 52%;
+/* Dracula — 官方配色原样：底 #282a36、面板 #21222c、文字 #f8f8f2、
+ * 次要 #6272a4（官方 comment 色）、青 #8be9fd、绿 #50fa7b、橙 #ffb86c、
+ * 粉 #ff79c6、紫 #bd93f9、红 #ff5555、黄 #f1fa8c。
+ * 主色取紫，品牌渐变粉→紫；语法色按官方编辑器配色（键青 /
+ * 字符串黄 / 数字紫 / 布尔粉 / 空值橙 / 标点 comment 色）。 */
+html[data-theme='dracula'] {
+  --background: 231 15% 18%;
+  --foreground: 60 30% 96%;
+  --card: 235 14% 15%;
+  --card-foreground: 60 30% 96%;
+  --popover: 235 14% 15%;
+  --popover-foreground: 60 30% 96%;
+  --primary: 265 90% 78%;
+  --primary-foreground: 231 15% 18%;
+  --secondary: 232 14% 31%;
+  --secondary-foreground: 60 30% 96%;
+  --muted: 232 14% 31%;
+  --muted-foreground: 225 27% 51%;
+  --accent: 232 14% 31%;
+  --accent-foreground: 60 30% 96%;
+  --destructive: 0 100% 67%;
+  --destructive-foreground: 231 15% 18%;
+  --border: 232 14% 31%;
+  --input: 232 14% 31%;
+  --ring: 265 90% 78%;
+  --brand-1: 326 100% 74%;
+  --brand-2: 265 90% 78%;
+  --code-key: 191 97% 77%;
+  --code-string: 65 92% 77%;
+  --code-number: 265 90% 78%;
+  --code-bool: 326 100% 74%;
+  --code-null: 31 100% 71%;
+  --code-punct: 225 27% 51%;
 }
 
 @layer base {

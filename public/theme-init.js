@@ -1,14 +1,15 @@
 // No-flash theme: set data-theme + dark class before first paint.
 // Mirrors src/composables/useTheme.ts — storage key 'wb20-theme',
-// modes: light / dark / tokyonight / paper / terminal / sakura / system.
-// Dark themes (drive the .dark class): dark, tokyonight, terminal.
+// modes: light / dark / tokyonight / catppuccin / gruvbox / dracula / system.
+// Dark themes (drive the .dark class): dark, tokyonight, catppuccin,
+// gruvbox, dracula.
 // Kept as a separate same-origin file (loaded synchronously from <head>)
 // so the Content-Security-Policy can stay strict: script-src 'self'
 // with no 'unsafe-inline' and no 'unsafe-eval' (Vite precompiles templates).
 try {
   var stored = localStorage.getItem('wb20-theme')
-  var valid = { light: 1, dark: 1, tokyonight: 1, paper: 1, terminal: 1, sakura: 1 }
-  var darkThemes = { dark: 1, tokyonight: 1, terminal: 1 }
+  var valid = { light: 1, dark: 1, tokyonight: 1, catppuccin: 1, gruvbox: 1, dracula: 1 }
+  var darkThemes = { dark: 1, tokyonight: 1, catppuccin: 1, gruvbox: 1, dracula: 1 }
   var theme = valid[stored] ? stored : null
   var dark = theme
     ? !!darkThemes[theme]

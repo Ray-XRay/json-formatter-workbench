@@ -2,7 +2,7 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 
 /** Signature themes. `light` / `dark` are the spec defaults; the rest are
  *  signature themes with their own accent and syntax colours. */
-export type ThemeId = 'light' | 'dark' | 'tokyonight' | 'paper' | 'terminal' | 'sakura'
+export type ThemeId = 'light' | 'dark' | 'tokyonight' | 'catppuccin' | 'gruvbox' | 'dracula'
 /** What the user picks: a theme, or follow the OS. */
 export type ThemeMode = ThemeId | 'system'
 
@@ -51,31 +51,31 @@ export const THEMES: readonly ThemeMeta[] = [
     blurb: '深海军蓝 · 蓝紫点缀',
   },
   {
-    id: 'paper',
-    label: '暖纸',
-    nameEn: 'Paper',
-    dark: false,
-    swatchBg: '#f6f1e7',
-    swatchAccent: '#b45309',
-    blurb: '暖米纸色 · 琥珀点缀',
-  },
-  {
-    id: 'terminal',
-    label: '终端绿',
-    nameEn: 'Terminal',
+    id: 'catppuccin',
+    label: '猫布奇诺',
+    nameEn: 'Catppuccin Mocha',
     dark: true,
-    swatchBg: '#050805',
-    swatchAccent: '#22c55e',
-    blurb: '磷光绿 · 黑底终端',
+    swatchBg: '#1e1e2e',
+    swatchAccent: '#cba6f7',
+    blurb: '摩卡底 · 淡紫粉彩点缀',
   },
   {
-    id: 'sakura',
-    label: '樱花',
-    nameEn: 'Sakura',
-    dark: false,
-    swatchBg: '#fdf2f7',
-    swatchAccent: '#db2777',
-    blurb: '柔和粉紫 · 樱花点缀',
+    id: 'gruvbox',
+    label: '暖棕复古',
+    nameEn: 'Gruvbox Dark',
+    dark: true,
+    swatchBg: '#282828',
+    swatchAccent: '#d65d0e',
+    blurb: '暖棕底 · 橙黄点缀',
+  },
+  {
+    id: 'dracula',
+    label: '德古拉',
+    nameEn: 'Dracula',
+    dark: true,
+    swatchBg: '#282a36',
+    swatchAccent: '#bd93f9',
+    blurb: '深紫底 · 粉紫点缀',
   },
 ] as const
 

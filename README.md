@@ -9,7 +9,7 @@
 - **Vue Router 4**（history 模式，四条懒加载路由）
 - **Tailwind CSS 3.4** + shadcn-vue 设计令牌（`reka-ui` 原语）
 - **lucide-vue-next** 图标、`@vueuse/core` / `@vueuse/motion`、`@formkit/auto-animate`
-- **主题**：Light / Dark / Tokyo Night / Paper / Terminal / Sakura 六档 + 跟随系统（System），顶栏下拉选择，切换无闪烁、带平滑过渡
+- **主题**：Light / Dark / Tokyo Night / Catppuccin Mocha / Gruvbox Dark / Dracula 六档 + 跟随系统（System），顶栏下拉选择，切换无闪烁、带平滑过渡
 - **业务依赖全部本地打包**：sql-formatter 15.9.0（SQL 格式化）、bwip-js 4.11.4（QR / 条码渲染），零 CDN
 
 ## 开发
@@ -67,4 +67,4 @@ npm run preview    # 预览生产构建
 
 ## 版本
 
-当前版本 2.0.0-alpha.3（合流版：打磨版的壳 + 迁移版的功能 + 品牌下拉导航）。版本记录见 CHANGELOG.md。
+当前版本 2.0.0-alpha.4（主题重做：Paper / Terminal / Sakura 换成 Catppuccin Mocha / Gruvbox Dark / Dracula；整体 UI 通查修缮）。版本记录见 CHANGELOG.md。

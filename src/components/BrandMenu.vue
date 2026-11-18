@@ -105,7 +105,7 @@ onUnmounted((): void => {
           <span
             class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
           >
-            2.0.0-alpha.3
+            2.0.0-alpha.4
           </span>
         </div>
       </div>

@@ -1295,7 +1295,7 @@ onUnmounted((): void => {
     </div>
 
     <!-- JSONPath 查询栏 -->
-    <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5">
+    <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm">
       <label class="text-sm text-muted-foreground" for="jsonpathInput">JSONPath</label>
       <input
         id="jsonpathInput"
@@ -1317,7 +1317,7 @@ onUnmounted((): void => {
     </div>
 
     <!-- JSONPath 查询结果 -->
-    <div v-if="jpResultsOpen" class="rounded-lg border border-border bg-card">
+    <div v-if="jpResultsOpen" class="rounded-lg border border-border bg-card shadow-sm">
       <div class="flex items-center justify-between border-b border-border px-3 py-2">
         <span class="text-sm font-medium">
           查询结果 <span class="text-xs font-normal text-muted-foreground">共 {{ jpMatches.length }} 个匹配</span>
@@ -1340,14 +1340,14 @@ onUnmounted((): void => {
           class="flex w-full items-baseline gap-2 rounded px-2 py-1 text-left font-mono text-[13px] transition-colors hover:bg-accent"
           @click="copyText(JSON.stringify(m.value, null, 2))"
         >
-          <span class="shrink-0 text-sky-700 dark:text-sky-300">{{ m.path }}</span>
+          <span class="shrink-0 text-[hsl(var(--code-key))]">{{ m.path }}</span>
           <span class="min-w-0 truncate text-muted-foreground">{{ jpPreview(m.value) }}</span>
         </button>
       </div>
     </div>
 
     <!-- 对比面板 -->
-    <div v-if="diffPanelOpen" class="rounded-lg border border-border bg-card p-3">
+    <div v-if="diffPanelOpen" class="rounded-lg border border-border bg-card p-3 shadow-sm">
       <div class="mb-2 flex items-center gap-2">
         <span class="text-sm font-medium">对比 JSON</span>
         <span class="text-xs text-muted-foreground">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
@@ -1389,7 +1389,7 @@ onUnmounted((): void => {
     >
       <!-- 输入 -->
       <section
-        class="flex min-h-[240px] shrink-0 basis-[var(--split)] flex-col rounded-lg border border-border bg-card"
+        class="flex min-h-[240px] shrink-0 basis-[var(--split)] flex-col rounded-lg border border-border bg-card shadow-sm"
       >
         <div class="flex items-center gap-2 border-b border-border px-3 py-2">
           <span class="text-sm font-medium">输入</span>
@@ -1434,7 +1434,7 @@ onUnmounted((): void => {
       />
 
       <!-- 输出 -->
-      <section class="flex min-h-[240px] min-w-0 flex-1 flex-col rounded-lg border border-border bg-card">
+      <section class="flex min-h-[240px] min-w-0 flex-1 flex-col rounded-lg border border-border bg-card shadow-sm">
         <div class="flex items-center gap-2 border-b border-border px-3 py-2">
           <span class="text-sm font-medium">输出</span>
           <span class="text-xs text-muted-foreground">{{ outputStats }}</span>
@@ -1582,6 +1582,29 @@ onUnmounted((): void => {
 .dark .wb-u { color: #ff5370; }
 .dark .wb-p { color: #89ddff; }
 .dark .wb-c { color: #7f8c9b; font-style: italic; }
+/* Signature dark themes — official editor palettes (light / dark /
+ * tokyonight above stay exactly as they were). */
+html[data-theme='catppuccin'] .wb-k { color: #cba6f7; }
+html[data-theme='catppuccin'] .wb-s { color: #a6e3a1; }
+html[data-theme='catppuccin'] .wb-n { color: #fab387; }
+html[data-theme='catppuccin'] .wb-b { color: #f5c2e7; }
+html[data-theme='catppuccin'] .wb-u { color: #f38ba8; }
+html[data-theme='catppuccin'] .wb-p { color: #9399b2; }
+html[data-theme='catppuccin'] .wb-c { color: #6c7086; font-style: italic; }
+html[data-theme='gruvbox'] .wb-k { color: #83a598; }
+html[data-theme='gruvbox'] .wb-s { color: #b8bb26; }
+html[data-theme='gruvbox'] .wb-n { color: #d3869b; }
+html[data-theme='gruvbox'] .wb-b { color: #fe8019; }
+html[data-theme='gruvbox'] .wb-u { color: #fb4934; }
+html[data-theme='gruvbox'] .wb-p { color: #a89984; }
+html[data-theme='gruvbox'] .wb-c { color: #928374; font-style: italic; }
+html[data-theme='dracula'] .wb-k { color: #8be9fd; }
+html[data-theme='dracula'] .wb-s { color: #f1fa8c; }
+html[data-theme='dracula'] .wb-n { color: #bd93f9; }
+html[data-theme='dracula'] .wb-b { color: #ff79c6; }
+html[data-theme='dracula'] .wb-u { color: #ffb86c; }
+html[data-theme='dracula'] .wb-p { color: #6272a4; }
+html[data-theme='dracula'] .wb-c { color: #6272a4; font-style: italic; }
 </style>
 
 <style scoped>
