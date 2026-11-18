@@ -2,7 +2,7 @@
 
 MyWorkbench 2.0 的版本记录。2.0 与 1.x（`json-formatter-workbench` 仓库 main / vue 分支）是不同的技术栈与代码库，版本号从 2.0.0-alpha 起步。
 
-## [2.0.0-alpha] - 2026-11-18
+## [2.0.0-alpha] - 2026-11-18 (a75b7654)
 
 Phase 1 骨架上线（skeleton only，不含业务逻辑）：
 
