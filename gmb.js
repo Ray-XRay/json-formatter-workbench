@@ -51,11 +51,16 @@
     var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
     if (cur === '') cur = '/';
     if (page === cur) return;
+    var target = page;
     if (location.protocol === 'file:') {
-      location.href = page === '/' ? 'index.html' : page.slice(1) + '.html';
-      return;
+      target = page === '/' ? 'index.html' : page.slice(1) + '.html';
     }
-    location.href = page;
+    // 先淡出舊頁面再跳轉，新頁面載入時淡入，切換不那麼突兀
+    var reduceMotion = false;
+    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduceMotion) { location.href = target; return; }
+    document.documentElement.classList.add('page-leaving');
+    setTimeout(function () { location.href = target; }, 160);
   }
   brandMenu.addEventListener('click', function (e) {
     var item = e.target.closest('.brand-item');

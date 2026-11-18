@@ -187,11 +187,16 @@
     var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
     if (cur === '') cur = '/';
     if (page === cur) return;
+    var target = page;
     if (location.protocol === 'file:') {
-      location.href = page === '/' ? 'index.html' : page.slice(1) + '.html';
-      return;
+      target = page === '/' ? 'index.html' : page.slice(1) + '.html';
     }
-    location.href = page;
+    // 先淡出旧页面再跳转，新页面载入时淡入，切换不那么突兀
+    var reduceMotion = false;
+    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduceMotion) { location.href = target; return; }
+    document.documentElement.classList.add('page-leaving');
+    setTimeout(function () { location.href = target; }, 160);
   }
   brandMenu.addEventListener('click', function (e) {
     var item = e.target.closest('.brand-item');
