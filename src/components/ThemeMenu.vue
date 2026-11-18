@@ -46,7 +46,7 @@ function onSelect(value: unknown): void {
 
     <DropdownMenuPortal>
       <DropdownMenuContent
-        class="dropdown-content z-50 min-w-60 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl outline-none"
+        class="dropdown-content z-50 w-[min(15rem,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl outline-none"
         :side-offset="6"
         align="end"
       >
@@ -68,7 +68,7 @@ function onSelect(value: unknown): void {
                 borderColor: theme.swatchAccent,
               }"
             />
-            <span class="flex-1">
+            <span class="min-w-0 flex-1">
               <span class="block leading-tight">{{ theme.label }}</span>
               <span class="block text-xs leading-tight text-muted-foreground">
                 {{ theme.nameEn }} · {{ theme.blurb }}
@@ -86,7 +86,7 @@ function onSelect(value: unknown): void {
             class="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-sm outline-none data-[highlighted]:bg-accent"
           >
             <Monitor class="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span class="flex-1">
+            <span class="min-w-0 flex-1">
               <span class="block leading-tight">跟随系统</span>
               <span class="block text-xs leading-tight text-muted-foreground">
                 System · 自动跟随深浅色

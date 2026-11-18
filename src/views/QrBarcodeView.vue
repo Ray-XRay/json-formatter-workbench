@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Download, History, Image as ImageIcon, Plus, QrCode, X } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ChevronDown, Download, History, Image as ImageIcon, Plus, QrCode, X } from 'lucide-vue-next'
 import bwipjs from 'bwip-js'
 import CopyButton from '../components/CopyButton.vue'
 import { useToast } from '../composables/useToast'
@@ -78,6 +78,12 @@ const statsText = ref('等待生成')
 const detailStats = ref('')
 const generated = ref(false)
 
+/* 手机端折叠区与生成 loading（桌面端不受影响） */
+const isGenerating = ref(false)
+const optionsOpen = ref(false)
+const gs1Open = ref(false)
+const historyOpen = ref(false)
+
 const gs1Data = ref<Gs1Data | null>(null)
 const gs1DismissedText = ref<string | null>(null)
 const gs1FromTable = ref(false)
@@ -120,9 +126,11 @@ const leftPaneStyle = computed((): Record<string, string> => {
   }
   return leftHeight.value !== null ? { flex: `0 0 ${leftHeight.value}%` } : {}
 })
-const gs1PanelStyle = computed((): Record<string, string> => ({
-  flex: `0 0 ${gs1Ratio.value}%`,
-}))
+const gs1PanelStyle = computed((): Record<string, string> => {
+  // 手机上 GS1 区改自然高度，不再按百分比分配高度
+  if (!isDesktop.value) return {}
+  return { flex: `0 0 ${gs1Ratio.value}%` }
+})
 
 /* ---------- 渲染 ---------- */
 function currentSettings(): QrRenderSettings {
@@ -253,6 +261,17 @@ function closeGs1(): void {
   gs1Data.value = null
 }
 
+/* 手机端手风琴标题行：点一下展开/收起；桌面端标题行不可点 */
+function onGs1HeaderClick(): void {
+  if (isDesktop.value) return
+  gs1Open.value = !gs1Open.value
+}
+
+function onHistoryHeaderClick(): void {
+  if (isDesktop.value) return
+  historyOpen.value = !historyOpen.value
+}
+
 function onResetGs1Names(): void {
   resetGs1CustomNames()
   customNames.value = {}
@@ -273,10 +292,17 @@ function importGs1Template(): void {
 }
 
 /* ---------- 按钮动作 ---------- */
-function doGenerate(): void {
-  render()
-  updateGs1Panel()
-  historyItems.value = saveQrHistory(text.value)
+async function doGenerate(): Promise<void> {
+  if (isGenerating.value) return
+  isGenerating.value = true
+  try {
+    await nextTick()
+    render()
+    updateGs1Panel()
+    historyItems.value = saveQrHistory(text.value)
+  } finally {
+    isGenerating.value = false
+  }
 }
 
 function loadSample(): void {
@@ -462,6 +488,11 @@ watch(
   { flush: 'sync' },
 )
 
+/* GS1 面板：输入被解析为 GS1 链接/元素串时自动展开；用户手动收起后不再强行展开 */
+watch(gs1Visible, (v: boolean): void => {
+  if (v) gs1Open.value = true
+})
+
 watch([format, scale, ec, showText, fgColor, bgColor], (): void => {
   safeSet(SIZE_KEY, scale.value)
   render()
@@ -504,7 +535,7 @@ onUnmounted((): void => {
 
 /* ---------- 模板用样式常量 ---------- */
 const btnBase =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95'
+  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95'
 const btnPrimary =
   'inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95'
 const btnGhostSm =
@@ -516,7 +547,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
 
 <template>
   <div class="mx-auto flex w-full max-w-6xl flex-col gap-4">
-    <header class="space-y-1">
+    <header class="space-y-1 max-lg:order-1">
       <h1 class="flex items-center gap-2 text-xl font-semibold tracking-tight">
         <QrCode class="h-5 w-5" />
         QR / 条码
@@ -527,11 +558,43 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
       </p>
     </header>
 
-    <!-- 工具栏 -->
+    <!-- 工具栏：手机上 display:contents，各控件按 order 重排进单列主线 -->
     <section
-      class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-card p-3 shadow-sm"
+      class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-border bg-card p-3 shadow-sm max-lg:contents"
     >
-      <label :class="labelBase">
+      <!-- 手机上：类型 + 大小是输入区上方唯一的一行（移动端专用，桌面端用工具栏里的原项） -->
+      <div class="flex items-center gap-4 max-lg:order-2 lg:hidden">
+        <label :class="labelBase">
+          类型
+          <select
+            :value="format"
+            :class="inputBase"
+            aria-label="类型"
+            @change="onFormatChange"
+          >
+            <option value="qrcode">QR Code 二维码</option>
+            <option value="code128">条码</option>
+          </select>
+        </label>
+        <label :class="labelBase">
+          大小
+          <select
+            :value="scale"
+            :class="inputBase"
+            aria-label="大小"
+            @change="onScaleChange"
+          >
+            <option
+              v-for="opt in SIZE_OPTIONS"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <label :class="[labelBase, 'max-lg:hidden']">
         类型
         <select
           :value="format"
@@ -543,23 +606,36 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           <option value="code128">条码</option>
         </select>
       </label>
-      <div class="flex items-center gap-2">
-        <button type="button" :class="[btnPrimary, 'h-9']" @click="doGenerate">
-          生成
+      <div class="flex items-center gap-2 max-lg:order-4 lg:contents">
+        <button
+          type="button"
+          :class="[btnPrimary, 'h-9 max-lg:h-11 max-lg:w-full disabled:opacity-70']"
+          :disabled="isGenerating"
+          @click="doGenerate"
+        >
+          <span
+            v-if="isGenerating"
+            class="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground"
+          />
+          {{ isGenerating ? '生成中…' : '生成' }}
         </button>
-        <button type="button" :class="[btnBase, 'h-9']" @click="loadSample">
+        <button
+          type="button"
+          :class="[btnBase, 'h-9 max-lg:hidden']"
+          @click="loadSample"
+        >
           载入示例
         </button>
         <button
           type="button"
-          :class="[btnBase, 'h-9']"
+          :class="[btnBase, 'h-9 max-lg:hidden']"
           title="载入一条 GS1 Digital Link 示例，用参数表生成 GS1 链接与二维码来测试"
           @click="loadGs1Sample"
         >
           GS1 示例
         </button>
       </div>
-      <label :class="labelBase">
+      <label :class="[labelBase, 'max-lg:hidden']">
         大小
         <select
           :value="scale"
@@ -576,6 +652,30 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           </option>
         </select>
       </label>
+      <!-- 手机上：纠错/颜色/下方文字收进「选项」折叠区，默认收起 -->
+      <div
+        class="max-lg:order-7 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:contents"
+      >
+        <button
+          type="button"
+          class="flex h-11 w-full items-center gap-2 px-3 text-sm font-medium lg:hidden"
+          @click="optionsOpen = !optionsOpen"
+        >
+          选项
+          <span class="flex-1" />
+          <ChevronDown
+            :class="[
+              'h-4 w-4 text-muted-foreground transition-transform',
+              optionsOpen ? 'rotate-180' : '',
+            ]"
+          />
+        </button>
+        <div
+          :class="[
+            'flex flex-wrap items-center gap-x-4 gap-y-3 max-lg:border-t max-lg:border-border max-lg:p-3 lg:contents',
+            optionsOpen ? '' : 'max-lg:hidden',
+          ]"
+        >
       <label v-if="isQr" :class="labelBase">
         纠错级别
         <select :value="ec" :class="inputBase" aria-label="纠错级别" @change="onEcChange">
@@ -606,54 +706,103 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           aria-label="背景色"
         />
       </label>
-      <span class="flex-1" />
-      <div class="flex items-center gap-2">
-        <button type="button" :class="[btnBase, 'h-9']" @click="downloadPng">
+        </div>
+      </div>
+      <span class="flex-1 max-lg:hidden" />
+      <div
+        class="max-lg:order-6 max-lg:grid max-lg:grid-cols-2 max-lg:gap-2 lg:flex lg:items-center lg:gap-2"
+      >
+        <button
+          type="button"
+          :class="[btnBase, 'h-9 max-lg:order-1 max-lg:h-11 max-lg:w-full']"
+          @click="downloadPng"
+        >
           <Download class="h-4 w-4" />
           下载 PNG
         </button>
-        <button type="button" :class="[btnBase, 'h-9']" @click="downloadSvg">
+        <button
+          type="button"
+          :class="[btnBase, 'h-9 max-lg:order-3 max-lg:h-11 max-lg:w-full']"
+          @click="downloadSvg"
+        >
           <Download class="h-4 w-4" />
           下载 SVG
         </button>
-        <button type="button" :class="[btnBase, 'h-9']" @click="copyImage">
+        <button
+          type="button"
+          :class="[btnBase, 'h-9 max-lg:order-2 max-lg:h-11 max-lg:w-full']"
+          @click="copyImage"
+        >
           <ImageIcon class="h-4 w-4" />
           复制图片
         </button>
-        <CopyButton :text="text" label="复制文本" />
+        <CopyButton
+          :text="text"
+          label="复制文本"
+          class="max-lg:order-4 max-lg:h-11 max-lg:w-full whitespace-nowrap"
+        />
       </div>
     </section>
 
-    <!-- 左右版面 -->
+    <!-- 左右版面：手机上 display:contents，废弃固定 620px 分栏，整页单列自然高度 -->
     <section
       ref="panesRef"
-      class="flex h-[620px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm lg:h-[calc(100dvh-21rem)] lg:min-h-[520px] lg:flex-row"
+      class="flex h-[620px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm max-lg:contents lg:h-[calc(100dvh-21rem)] lg:min-h-[520px] lg:flex-row"
     >
       <!-- 左：内容 -->
       <div
         ref="paneLeftRef"
         :style="leftPaneStyle"
-        class="flex min-h-0 min-w-0 flex-1 flex-col"
+        class="flex min-h-0 min-w-0 flex-1 flex-col max-lg:contents"
       >
-        <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
-          <span class="text-sm font-medium">内容</span>
+        <!-- 输入卡片：手机上是独立卡片，类型/大小行在它上方、生成按钮在它下方 -->
+        <div
+          class="flex min-h-0 flex-1 flex-col max-lg:order-3 max-lg:flex-none max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm"
+        >
+        <div
+          class="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 max-lg:h-12"
+        >
+          <span class="text-sm font-medium max-lg:hidden">内容</span>
+          <button
+            type="button"
+            :class="[btnBase, 'h-9 max-lg:h-11 lg:hidden']"
+            @click="loadSample"
+          >
+            载入示例
+          </button>
+          <button
+            type="button"
+            :class="[btnBase, 'h-9 max-lg:h-11 lg:hidden']"
+            title="载入一条 GS1 Digital Link 示例，用参数表生成 GS1 链接与二维码来测试"
+            @click="loadGs1Sample"
+          >
+            GS1 示例
+          </button>
           <span class="flex-1" />
-          <button type="button" :class="btnGhostSm" @click="clearInput">清空</button>
-          <span class="font-mono text-xs tabular-nums text-muted-foreground">{{
-            inputStats
-          }}</span>
+          <button
+            type="button"
+            :class="[btnGhostSm, 'max-lg:h-11 max-lg:px-3 max-lg:text-sm']"
+            @click="clearInput"
+          >
+            清空
+          </button>
+          <span
+            class="font-mono text-xs tabular-nums text-muted-foreground max-lg:hidden"
+            >{{ inputStats }}</span
+          >
         </div>
-        <div class="min-h-0 flex-1">
+        <div class="min-h-0 flex-1 max-lg:flex-none">
           <textarea
             ref="inputRef"
             v-model="text"
             spellcheck="false"
             placeholder="输入要编码的内容…"
-            class="h-full w-full resize-none bg-transparent p-3 font-mono text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+            class="w-full resize-none bg-transparent p-3 font-mono text-sm leading-relaxed outline-none placeholder:text-muted-foreground max-lg:min-h-[160px] lg:h-full"
           />
         </div>
+        </div>
         <p
-          class="shrink-0 border-t border-border px-3 py-2 text-xs leading-relaxed text-muted-foreground"
+          class="shrink-0 border-t border-border px-3 py-2 text-xs leading-relaxed text-muted-foreground max-lg:hidden"
         >
           {{ formatHint }}
         </p>
@@ -661,16 +810,19 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
         <!-- GS1 分隔条 + 参数区 -->
         <div
           v-if="gs1Visible"
-          class="h-2 shrink-0 cursor-row-resize touch-none bg-border/50 hover:bg-border"
+          class="h-2 shrink-0 cursor-row-resize touch-none bg-border/50 hover:bg-border max-lg:hidden"
           title="拖动调整 GS1 参数区的高度"
           @pointerdown="onGs1DividerPointerDown"
         />
         <div
           v-if="gs1Visible"
           :style="gs1PanelStyle"
-          class="flex min-h-0 flex-col border-t border-border"
+          class="max-lg:order-8 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:flex lg:min-h-0 lg:flex-col lg:border-t lg:border-border"
         >
-          <div class="flex h-9 shrink-0 items-center gap-2 px-3">
+          <div
+            class="flex h-9 shrink-0 items-center gap-2 px-3 max-lg:h-11 max-lg:cursor-pointer max-lg:select-none"
+            @click="onGs1HeaderClick"
+          >
             <span class="text-sm font-medium">GS1 参数</span>
             <span class="text-xs text-muted-foreground"
               >{{ gs1Params.length }} 个参数</span
@@ -678,7 +830,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
             <span class="flex-1" />
             <button
               type="button"
-              :class="btnGhostSm"
+              :class="[btnGhostSm, 'max-lg:hidden']"
               title="把所有 AI 的显示名称恢复成默认"
               @click="onResetGs1Names"
             >
@@ -686,13 +838,24 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
             </button>
             <button
               type="button"
-              :class="btnGhostSm"
+              :class="[btnGhostSm, 'max-lg:hidden']"
               title="收起 GS1 参数"
               @click="closeGs1"
             >
               收起
             </button>
+            <ChevronDown
+              :class="[
+                'h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden',
+                gs1Open ? 'rotate-180' : '',
+              ]"
+            />
           </div>
+          <!-- 手机上手风琴主体：默认收起，GS1 解析出来时自动展开 -->
+          <div
+            :class="gs1Open ? '' : 'max-lg:hidden'"
+            class="max-lg:border-t max-lg:border-border lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+          >
           <div class="flex shrink-0 items-center gap-2 px-3 pb-2">
             <input
               v-model="templateInput"
@@ -706,12 +869,12 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
               导入模板
             </button>
           </div>
-          <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-1">
+          <div class="overflow-y-auto px-2 pb-1 max-lg:max-h-[40dvh] lg:min-h-0 lg:flex-1">
             <div
               v-for="p in gs1Params"
               :key="p.id"
               :class="[
-                'grid grid-cols-[auto_4.25rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-1',
+                'grid items-center gap-2 rounded-md px-1 py-1 max-lg:grid-cols-[auto_4.25rem_minmax(0,1fr)] max-lg:gap-y-1.5 max-lg:py-2 lg:grid-cols-[auto_4.25rem_minmax(0,1fr)_minmax(0,1fr)_auto]',
                 p.enabled ? '' : 'opacity-50',
               ]"
             >
@@ -747,7 +910,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
               <input
                 v-model="p.value"
                 type="text"
-                class="h-8 w-full rounded-md border border-input bg-background px-1.5 font-mono text-xs outline-none"
+                class="h-8 w-full rounded-md border border-input bg-background px-1.5 font-mono text-xs outline-none max-lg:col-span-2"
                 aria-label="参数值"
                 @change="gs1TableChanged"
               />
@@ -783,24 +946,64 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
               添加
             </button>
           </div>
-        </div>
-
-        <!-- 生成历史 -->
-        <div v-if="historyItems.length" class="shrink-0 border-t border-border">
-          <div class="flex h-9 items-center gap-2 px-3">
-            <History class="h-4 w-4 text-muted-foreground" />
-            <span class="text-sm font-medium">生成历史</span>
+          <div class="flex items-center gap-2 px-3 py-2 lg:hidden">
+            <button
+              type="button"
+              :class="btnGhostSm"
+              title="把所有 AI 的显示名称恢复成默认"
+              @click="onResetGs1Names"
+            >
+              恢复默认名称
+            </button>
             <span class="flex-1" />
             <button
               type="button"
               :class="btnGhostSm"
+              title="收起 GS1 参数"
+              @click="closeGs1"
+            >
+              收起
+            </button>
+          </div>
+          </div>
+        </div>
+
+        <!-- 生成历史：手机上默认收起的手风琴 -->
+        <div
+          v-if="historyItems.length"
+          class="max-lg:order-9 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:shrink-0 lg:border-t lg:border-border"
+        >
+          <div
+            class="flex h-9 items-center gap-2 px-3 max-lg:h-11 max-lg:cursor-pointer max-lg:select-none"
+            @click="onHistoryHeaderClick"
+          >
+            <History class="h-4 w-4 text-muted-foreground" />
+            <span class="text-sm font-medium">生成历史</span>
+            <span class="text-xs text-muted-foreground lg:hidden"
+              >{{ historyItems.length }} 条</span
+            >
+            <span class="flex-1" />
+            <ChevronDown
+              :class="[
+                'h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden',
+                historyOpen ? 'rotate-180' : '',
+              ]"
+            />
+            <button
+              type="button"
+              :class="btnGhostSm"
               title="清空生成历史"
-              @click="onClearHistory"
+              @click.stop="onClearHistory"
             >
               清空
             </button>
           </div>
-          <div class="max-h-32 overflow-y-auto px-2 pb-2">
+          <div
+            :class="[
+              'max-h-32 overflow-y-auto px-2 pb-2',
+              historyOpen ? '' : 'max-lg:hidden',
+            ]"
+          >
             <button
               v-for="item in historyItems"
               :key="item.t + item.v"
@@ -815,21 +1018,27 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
         </div>
       </div>
 
-      <!-- 左右分隔条 -->
+      <!-- 左右分隔条（桌面端保留拖拽，手机上无意义，隐藏） -->
       <div
-        class="h-2 shrink-0 cursor-row-resize touch-none bg-border/50 hover:bg-border lg:h-auto lg:w-2 lg:cursor-col-resize"
+        class="h-2 shrink-0 cursor-row-resize touch-none bg-border/50 hover:bg-border max-lg:hidden lg:h-auto lg:w-2 lg:cursor-col-resize"
         title="拖动调整左右宽度"
         @pointerdown="onDividerPointerDown"
       />
 
       <!-- 右：预览 -->
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        class="flex min-h-0 min-w-0 flex-1 flex-col max-lg:order-5 max-lg:flex-none max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm"
+      >
         <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
           <span class="text-sm font-medium">预览</span>
           <span class="flex-1" />
           <span class="font-mono text-xs tabular-nums text-muted-foreground">{{
             statsText
           }}</span>
+          <span
+            class="font-mono text-xs tabular-nums text-muted-foreground lg:hidden"
+            >{{ inputStats }}</span
+          >
         </div>
         <div
           class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-4"
@@ -837,6 +1046,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           <canvas
             v-show="generated"
             ref="canvasRef"
+            :class="{ 'wb-result-in': generated }"
             class="h-auto w-auto max-w-full"
             style="image-rendering: pixelated"
           />
@@ -849,14 +1059,15 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
 
     <!-- 状态栏 -->
     <footer
-      class="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm"
+      class="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm max-lg:order-10"
     >
       <span :class="['h-2.5 w-2.5 shrink-0 rounded-full', statusDotClass]" />
       <span>{{ statusMessage }}</span>
       <span class="flex-1" />
-      <span class="font-mono text-xs tabular-nums text-muted-foreground">{{
-        detailStats
-      }}</span>
+      <span
+        class="font-mono text-xs tabular-nums text-muted-foreground max-lg:hidden"
+        >{{ detailStats }}</span
+      >
     </footer>
   </div>
 </template>

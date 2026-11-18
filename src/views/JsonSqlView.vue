@@ -87,6 +87,10 @@ const diffOps = ref<DiffOp[] | null>(null)
 const diffVisible = ref(false)
 const diffStats = ref('')
 const moreOpen = ref(false)
+/** 手机输出区默认换行显示；关掉则横向滚动（桌面端不受影响）。 */
+const wrapOutput = ref(true)
+/** 每次出现新结果就 +1，让 <pre> 重建并重播 .wb-result-in 淡入。 */
+const resultAnimKey = ref(0)
 const shortcutOpen = ref(false)
 const historyItems = ref<string[]>([])
 const historySelected = ref('')
@@ -129,6 +133,11 @@ const outputHtml = computed((): string => {
 })
 
 const lineCount = computed((): number => inputText.value.split('\n').length)
+
+/** 新结果出现时重播 .wb-result-in 淡入（<pre> 用 :key 重建触发）。 */
+watch(outputHtml, (next: string, prev: string): void => {
+  if (next !== prev) resultAnimKey.value++
+})
 const gutterText = computed((): string => {
   let s = ''
   for (let i = 1; i <= lineCount.value; i++) s += i + '\n'
@@ -1020,6 +1029,23 @@ function onDocumentClick(e: MouseEvent): void {
   if (moreOpen.value && target && !target.closest('.more-wrap')) moreOpen.value = false
 }
 
+/* ---------- more-tools bottom sheet (mobile): swipe down to close ---------- */
+let drawerTouchStartY: number | null = null
+
+function onDrawerTouchStart(e: TouchEvent): void {
+  drawerTouchStartY = e.touches[0]?.clientY ?? null
+}
+
+function onDrawerTouchEnd(e: TouchEvent): void {
+  if (drawerTouchStartY === null) return
+  const endY = e.changedTouches[0]?.clientY ?? drawerTouchStartY
+  const el = e.currentTarget as HTMLElement | null
+  // Only a downward swipe from the top of the sheet closes it; scrolling the
+  // list itself must not close it.
+  if (el && el.scrollTop <= 0 && endY - drawerTouchStartY > 60) moreOpen.value = false
+  drawerTouchStartY = null
+}
+
 /* ---------- splitter ---------- */
 function onDividerDown(e: PointerEvent): void {
   e.preventDefault()
@@ -1122,7 +1148,7 @@ onUnmounted((): void => {
         type="button"
         :disabled="!canMinify"
         :title="minifyTitle"
-        class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+        class="hidden h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 lg:inline-flex"
         @click="doMinify"
       >
         压缩
@@ -1141,7 +1167,7 @@ onUnmounted((): void => {
         </button>
         <div
           v-if="moreOpen"
-          class="absolute left-0 top-full z-30 mt-1 max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-sm shadow-lg"
+          class="absolute left-0 top-full z-30 mt-1 hidden max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-sm shadow-lg lg:block"
         >
           <button type="button" class="more-item" @click="doValidate">验证</button>
           <button
@@ -1254,48 +1280,140 @@ onUnmounted((): void => {
             草稿与历史仅保存在本机浏览器，7 天后过期；关闭后立即删除已存内容。
           </p>
         </div>
+
+      <!-- 手机底部抽屉：与桌面下拉框同一份菜单内容，lg: 断点切换显示 -->
+      <div
+        v-if="moreOpen"
+        class="fixed inset-0 z-40 bg-black/50 lg:hidden"
+        @click="moreOpen = false"
+      />
+      <Transition name="more-drawer">
+        <div
+          v-if="moreOpen"
+          class="fixed inset-x-3 bottom-3 z-50 max-h-[70dvh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-popover p-1.5 text-sm shadow-xl lg:hidden"
+          @touchstart="onDrawerTouchStart"
+          @touchend="onDrawerTouchEnd"
+        >
+          <div class="mx-auto mb-1 h-1 w-10 rounded-full bg-border" />
+          <button type="button" class="more-item" @click="doValidate">验证</button>
+          <button
+            v-if="isJson"
+            type="button"
+            class="more-item"
+            title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释"
+            @click="doRepair"
+          >
+            修复 JSON
+          </button>
+          <div class="more-row">
+            <span class="text-muted-foreground">缩进</span>
+            <select v-model="indent" class="h-8 rounded-md border border-input bg-background px-1.5 text-sm">
+              <option value="2">2 空格</option>
+              <option value="4">4 空格</option>
+              <option value="tab">Tab</option>
+            </select>
+          </div>
+          <label v-if="isJson" class="more-row cursor-pointer">
+            <input v-model="sortKeys" type="checkbox" class="accent-primary" /> 按键名排序
+          </label>
+          <label class="more-row cursor-pointer">
+            <input v-model="formatOnPaste" type="checkbox" class="accent-primary" /> 粘贴后自动格式化
+          </label>
+          <button
+            v-if="isJson"
+            type="button"
+            class="more-item"
+            title="展开 JSONPath 查询栏"
+            @click="toggleJpBar"
+          >
+            JSONPath 查询
+          </button>
+          <button
+            type="button"
+            class="more-item"
+            title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色"
+            @click="copyMarkdown"
+          >
+            复制 Markdown
+          </button>
+          <button type="button" class="more-item" @click="downloadJson">下载</button>
+          <div v-if="isJson" class="more-row more-row-stack">
+            <span class="text-muted-foreground">生成类型</span>
+            <select v-model="typeLang" class="h-8 rounded-md border border-input bg-background px-1.5 text-sm">
+              <option value="ts">TypeScript</option>
+              <option value="go">Go</option>
+              <option value="py">Python</option>
+            </select>
+            <button
+              type="button"
+              title="根据当前 JSON 生成所选语言的类型定义"
+              class="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+              @click="doGenerateType"
+            >
+              生成
+            </button>
+          </div>
+          <button v-if="isJson" type="button" class="more-item" title="把当前 JSON 转成 YAML" @click="doYaml">
+            转 YAML
+          </button>
+          <button v-if="isJson" type="button" class="more-item" title="与第二份 JSON 逐行对比差异" @click="openDiffPanel">
+            对比 JSON
+          </button>
+          <button v-if="isJson" type="button" class="more-item" title="把输入转成 JSON 转义字符串" @click="doEscape">
+            转义
+          </button>
+          <button v-if="isJson" type="button" class="more-item" title="把 JSON 转义字符串还原" @click="doUnescape">
+            去转义
+          </button>
+          <button
+            type="button"
+            class="more-item"
+            title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据"
+            @click="doShare"
+          >
+            分享链接
+          </button>
+          <button type="button" class="more-item" title="查看与修改全部快捷键" @click="openShortcutSettings">
+            快捷键设置
+          </button>
+          <div class="more-row">
+            <span class="text-muted-foreground">历史</span>
+            <select
+              v-model="historySelected"
+              class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-sm"
+              @change="onHistorySelect"
+            >
+              <option value="">最近的输入…</option>
+              <option v-for="(item, idx) in historyItems" :key="idx" :value="String(idx)">
+                {{ item.replace(/\s+/g, ' ').slice(0, 40) }}{{ item.length > 40 ? '…' : '' }}
+              </option>
+            </select>
+            <button
+              type="button"
+              title="删掉全部历史记录"
+              class="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+              @click="clearHistory"
+            >
+              清空
+            </button>
+          </div>
+          <div class="my-1 border-t border-border" />
+          <label class="more-row cursor-pointer">
+            <input v-model="remember" type="checkbox" class="accent-primary" @change="onRememberChange" />
+            记住输入草稿与历史
+          </label>
+          <p class="px-2 pb-1 text-xs leading-relaxed text-muted-foreground">
+            草稿与历史仅保存在本机浏览器，7 天后过期；关闭后立即删除已存内容。
+          </p>
+        </div>
+      </Transition>
       </div>
 
-      <div class="flex-1" />
-
-      <div v-if="isJson" class="inline-flex rounded-md border border-border bg-muted/50 p-0.5" role="tablist" aria-label="输出视图">
-        <button
-          type="button"
-          role="tab"
-          :class="[
-            'inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors',
-            currentView === 'code' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-          ]"
-          @click="setView('code')"
-        >
-          代码
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :class="[
-            'inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors',
-            currentView === 'tree' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-          ]"
-          @click="onViewTree"
-        >
-          树形
-        </button>
-      </div>
-      <CopyButton v-if="lastFormatted" :text="lastFormatted" label="复制结果" />
-      <button
-        v-else
-        type="button"
-        disabled
-        title="先格式化一次"
-        class="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium opacity-50"
-      >
-        复制结果
-      </button>
+      <div class="hidden flex-1 lg:block" />
     </div>
 
     <!-- JSONPath 查询栏 -->
-    <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm">
+    <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm max-lg:flex-col max-lg:items-stretch">
       <label class="text-sm text-muted-foreground" for="jsonpathInput">JSONPath</label>
       <input
         id="jsonpathInput"
@@ -1348,9 +1466,9 @@ onUnmounted((): void => {
 
     <!-- 对比面板 -->
     <div v-if="diffPanelOpen" class="rounded-lg border border-border bg-card p-3 shadow-sm">
-      <div class="mb-2 flex items-center gap-2">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
         <span class="text-sm font-medium">对比 JSON</span>
-        <span class="text-xs text-muted-foreground">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
+        <span class="text-xs text-muted-foreground max-lg:w-full">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
         <div class="flex-1" />
         <button
           type="button"
@@ -1367,7 +1485,7 @@ onUnmounted((): void => {
         rows="4"
         class="w-full resize-y rounded-md border border-input bg-background p-2.5 font-mono text-[13px] leading-relaxed"
       />
-      <div class="mt-2 flex items-center gap-3">
+      <div class="mt-2 flex flex-wrap items-center gap-3">
         <button
           type="button"
           class="inline-flex h-9 items-center rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
@@ -1382,16 +1500,16 @@ onUnmounted((): void => {
     <!-- 左右分栏 -->
     <div
       ref="panesEl"
-      class="flex min-h-[480px] flex-1 flex-col lg:flex-row"
+      class="flex min-h-0 flex-col gap-3 lg:min-h-[480px] lg:flex-1 lg:flex-row lg:gap-0"
       :style="{ '--split': splitPct + '%' }"
       @dragover="onDragOver"
       @drop="onDrop"
     >
       <!-- 输入 -->
       <section
-        class="flex min-h-[240px] shrink-0 basis-[var(--split)] flex-col rounded-lg border border-border bg-card shadow-sm"
+        class="flex min-h-[200px] shrink-0 flex-col rounded-lg border border-border bg-card shadow-sm lg:min-h-[240px] lg:basis-[var(--split)]"
       >
-        <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+        <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span class="text-sm font-medium">输入</span>
           <div class="flex-1" />
           <button type="button" class="pane-btn" @click="loadSample">载入示例</button>
@@ -1429,16 +1547,56 @@ onUnmounted((): void => {
       <div
         ref="dividerEl"
         title="拖动调整左右宽度"
-        class="h-1.5 shrink-0 cursor-row-resize touch-none rounded bg-border/60 transition-colors hover:bg-primary/40 lg:h-auto lg:w-1.5 lg:cursor-col-resize"
+        class="hidden h-1.5 shrink-0 cursor-row-resize touch-none rounded bg-border/60 transition-colors hover:bg-primary/40 lg:block lg:h-auto lg:w-1.5 lg:cursor-col-resize"
         @pointerdown="onDividerDown"
       />
 
       <!-- 输出 -->
-      <section class="flex min-h-[240px] min-w-0 flex-1 flex-col rounded-lg border border-border bg-card shadow-sm">
-        <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+      <section class="relative flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-card shadow-sm lg:min-h-[240px] lg:flex-1">
+        <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span class="text-sm font-medium">输出</span>
           <span class="text-xs text-muted-foreground">{{ outputStats }}</span>
           <div class="flex-1" />
+          <label
+            v-if="currentView === 'code' && !diffVisible"
+            class="inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground lg:hidden"
+          >
+            <input v-model="wrapOutput" type="checkbox" class="accent-primary" /> 换行
+          </label>
+          <div v-if="isJson" class="inline-flex rounded-md border border-border bg-muted/50 p-0.5" role="tablist" aria-label="输出视图">
+            <button
+              type="button"
+              role="tab"
+              :class="[
+                'inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors',
+                currentView === 'code' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              ]"
+              @click="setView('code')"
+            >
+              代码
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :class="[
+                'inline-flex h-8 items-center rounded px-3 text-sm font-medium transition-colors',
+                currentView === 'tree' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              ]"
+              @click="onViewTree"
+            >
+              树形
+            </button>
+          </div>
+          <CopyButton v-if="lastFormatted" :text="lastFormatted" label="复制结果" />
+          <button
+            v-else
+            type="button"
+            disabled
+            title="先格式化一次"
+            class="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium opacity-50"
+          >
+            复制结果
+          </button>
           <button
             v-if="currentView === 'tree'"
             type="button"
@@ -1471,7 +1629,7 @@ onUnmounted((): void => {
               ×
             </button>
           </div>
-          <div v-if="diffVisible" ref="diffViewEl" class="p-3 font-mono text-[13px] leading-6 tabular-nums">
+          <div v-if="diffVisible" ref="diffViewEl" class="wb-result-in p-3 font-mono text-[13px] leading-6 tabular-nums">
             <div
               v-for="(op, idx) in diffOps"
               :key="idx"
@@ -1483,7 +1641,7 @@ onUnmounted((): void => {
               ]"
             >{{ (op.t === 'add' ? '+ ' : op.t === 'del' ? '− ' : '  ') + op.line }}</div>
           </div>
-          <div v-else-if="currentView === 'tree'" ref="treeEl" tabindex="0" class="p-3 outline-none">
+          <div v-else-if="currentView === 'tree'" ref="treeEl" tabindex="0" class="wb-result-in p-3 outline-none">
             <JsonTreeNode
               v-if="lastValue !== null"
               :value="lastValue"
@@ -1496,9 +1654,21 @@ onUnmounted((): void => {
             v-else
             ref="outputEl"
             tabindex="0"
-            class="overflow-x-auto p-3 font-mono text-[13px] leading-6 tabular-nums outline-none"
+            :key="resultAnimKey"
+            :class="[
+              'wb-result-in p-3 font-mono text-[13px] leading-6 tabular-nums outline-none',
+              wrapOutput
+                ? 'max-lg:whitespace-pre-wrap max-lg:break-all max-lg:overflow-x-hidden lg:overflow-x-auto'
+                : 'overflow-x-auto',
+            ]"
             v-html="outputHtml"
           />
+        </div>
+        <div
+          v-if="!wrapOutput && currentView === 'code' && !diffVisible"
+          class="pointer-events-none absolute bottom-2 right-2 rounded bg-muted/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm lg:hidden"
+        >
+          ← 左右滑动查看 →
         </div>
       </section>
     </div>
@@ -1641,5 +1811,26 @@ html[data-theme='dracula'] .wb-c { color: #6272a4; font-style: italic; }
 }
 .pane-btn:hover {
   background-color: hsl(var(--accent));
+}
+/* 手机「更多工具」底部抽屉：上滑出现 220ms easeOutQuint */
+.more-drawer-enter-active,
+.more-drawer-leave-active {
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.more-drawer-enter-from,
+.more-drawer-leave-to {
+  opacity: 0;
+  transform: translateY(32px);
+}
+/* 抽屉里「生成类型」一行：手机上标签独占一行，选择器与生成按钮在下一行 */
+@media (max-width: 1023.5px) {
+  .more-row-stack {
+    flex-wrap: wrap;
+  }
+  .more-row-stack > :first-child {
+    flex-basis: 100%;
+  }
 }
 </style>

@@ -55,7 +55,7 @@ onUnmounted((): void => {
 
       <nav aria-label="面包屑" class="flex min-w-0 items-center gap-1 text-sm">
         <component :is="routeIcon" class="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span class="truncate font-medium">{{ route.meta.title }}</span>
+        <span class="hidden truncate font-medium sm:inline">{{ route.meta.title }}</span>
       </nav>
 
       <div class="flex-1" />
@@ -80,11 +80,9 @@ onUnmounted((): void => {
 
     <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
       <router-view v-slot="{ Component }">
-        <Transition name="route-fade" mode="out-in">
-          <ErrorBoundary :key="$route.fullPath">
-            <component :is="Component" />
-          </ErrorBoundary>
-        </Transition>
+        <ErrorBoundary :key="$route.fullPath">
+          <component :is="Component" />
+        </ErrorBoundary>
       </router-view>
     </main>
 

@@ -31,6 +31,24 @@ const route = useRoute()
 const open = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 
+/**
+ * Prefetch a route chunk on hover/focus so the first visit is instant.
+ * Same static import specifiers as the router, so Vite splits the
+ * identical chunks and the import is a cache hit after the first call.
+ */
+const PREFETCHERS: Record<string, () => Promise<unknown>> = {
+  '/json-sql': () => import('../views/JsonSqlView.vue'),
+  '/password': () => import('../views/PasswordView.vue'),
+  '/qr-barcode': () => import('../views/QrBarcodeView.vue'),
+  '/gmb': () => import('../views/GmbView.vue'),
+}
+
+function prefetch(path: string): void {
+  if (route.path === path) return
+  const load = PREFETCHERS[path]
+  if (load) void load()
+}
+
 function toggle(): void {
   open.value = !open.value
 }
@@ -94,8 +112,10 @@ onUnmounted((): void => {
           :key="tool.name"
           :to="tool.path"
           role="menuitem"
-          class="flex items-center gap-2.5 px-3 py-2.5 text-sm transition-colors hover:bg-accent"
+          class="flex items-center gap-2.5 px-3 py-3 text-sm transition-colors hover:bg-accent"
           @click="close()"
+          @mouseenter="prefetch(tool.path)"
+          @focus="prefetch(tool.path)"
         >
           <component :is="tool.icon" class="h-4 w-4 shrink-0 text-muted-foreground" />
           <span class="flex-1 truncate">{{ tool.label }}</span>
@@ -105,7 +125,7 @@ onUnmounted((): void => {
           <span
             class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
           >
-            2.0.0-alpha.4
+            2.0.0-alpha.5
           </span>
         </div>
       </div>
@@ -117,13 +137,20 @@ onUnmounted((): void => {
 .brand-menu-enter-active,
 .brand-menu-leave-active {
   transition:
-    opacity 150ms ease,
-    transform 150ms ease;
+    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .brand-menu-enter-from,
 .brand-menu-leave-to {
   opacity: 0;
   transform: translateY(-4px) scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-menu-enter-active,
+  .brand-menu-leave-active {
+    transition: none;
+  }
 }
 </style>

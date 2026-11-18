@@ -21,7 +21,7 @@ import {
   SRC_LABEL,
   SRC_SHORT,
 } from './api'
-import { MTR_LINES, MTR_LINE_ORDER, mtrStationName } from './mtrStations'
+import { MTR_LINES, MTR_LINE_ORDER, findNearestMtrStation, mtrStationName } from './mtrStations'
 import { getRecent, saveRecent } from './recent'
 import type {
   BusFound,
@@ -42,6 +42,33 @@ import type {
 
 const ETA_LABELS = ['下一班', '再下一班', '第三班'] as const
 const AUTO_REFRESH_MS = 30000
+/** 港鐵「找最近車站」：自動定位開關（可關）與已授權標記。只存標記，不存經緯度。 */
+const MTR_AUTOLOCATE_KEY = 'wb20-mtr-autolocate'
+const MTR_AUTHORIZED_KEY = 'wb20-mtr-authorized'
+
+function readAutoLocate(): boolean {
+  try {
+    return window.localStorage.getItem(MTR_AUTOLOCATE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function readMtrAuthorized(): boolean {
+  try {
+    return window.localStorage.getItem(MTR_AUTHORIZED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveMtrAuthorized(): void {
+  try {
+    window.localStorage.setItem(MTR_AUTHORIZED_KEY, '1')
+  } catch {
+    // 隱私模式等寫不進去也不影響定位本身
+  }
+}
 
 export interface EtaCardView {
   label: string
@@ -60,6 +87,7 @@ export interface StatusView {
 export function useGmb(): {
   mode: Ref<Mode>
   loading: Ref<boolean>
+  refreshing: Ref<boolean>
   autoRefresh: Ref<boolean>
   routeInput: Ref<string>
   stopFilter: Ref<string>
@@ -70,11 +98,15 @@ export function useGmb(): {
   recent: Ref<RecentEntry[]>
   bus: Ref<BusState>
   mtr: Ref<MtrState>
+  locating: Ref<boolean>
+  nearestInfo: Ref<string>
+  autoLocate: Ref<boolean>
   status: Ref<StatusView>
   updatedAt: Ref<string>
   stampKey: Ref<number>
   etaItems: Ref<(EtaItem | null)[]>
   etaAnim: Ref<boolean[]>
+  etaNumKey: Ref<string[]>
   etaCards: ComputedRef<EtaCardView[]>
   dirOptions: ComputedRef<DirItem[]>
   activeDirKey: ComputedRef<string>
@@ -84,7 +116,7 @@ export function useGmb(): {
   routeTitle: ComputedRef<string>
   routeRegionLabel: ComputedRef<string>
   mtrLineOptions: ComputedRef<{ code: string; name: string }[]>
-  mtrStations: ComputedRef<[string, string][]>
+  mtrStations: ComputedRef<[string, string, number, number][]>
   statusDotClass: ComputedRef<string>
   detailStats: ComputedRef<string>
   srcShort: (src: string) => string
@@ -98,7 +130,9 @@ export function useGmb(): {
   onMtrLineChange: () => void
   onMtrStationChange: () => void
   onEtaAnimEnd: (index: number) => void
-  loadCurrentEta: () => void
+  locateNearest: () => Promise<void>
+  loadCurrentEta: () => Promise<void>
+  refreshNow: () => Promise<void>
 } {
   const route = useRoute()
   const { push } = useToast()
@@ -106,6 +140,7 @@ export function useGmb(): {
   /* ---------- 狀態 ---------- */
   const mode = ref<Mode>('road')
   const loading = ref(false)
+  const refreshing = ref(false)
   const autoRefresh = ref(true)
   const routeInput = ref('87M')
   const stopFilter = ref('')
@@ -142,9 +177,18 @@ export function useGmb(): {
   // 港鐵（預設荃灣綫葵芳站）
   const mtr = ref<MtrState>({ line: 'TWL', sta: 'KWF', dir: 'UP' })
 
+  // 「找最近車站」：定位中 / 最近站說明 / 下次進港鐵模式是否自動定位（預設開，可關）
+  const locating = ref(false)
+  const nearestInfo = ref('')
+  const autoLocate = ref(readAutoLocate())
+
   // ETA 卡：三格，null = 暫無班次
   const etaItems = ref<(EtaItem | null)[]>([null, null, null])
   const etaAnim = ref<boolean[]>([false, false, false])
+  // 到站數字掉落動效的 :key：只有分鐘數真的變了（renderEtaCards 的 changed）才換 key、
+  // 舊數字離場、新數字落下；沒變時 key 不動，不播。
+  const etaNumKey = ref<string[]>(['k0', 'k1', 'k2'])
+  let numKeySeq = 0
   const lastEtaMin: (number | null)[] = [null, null, null]
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -166,6 +210,9 @@ export function useGmb(): {
       lastEtaMin[i] = newMin
       etaItems.value[i] = item
       if (changed && !reducedMotion) {
+        // 數字掉落動效：換 :key 觸發舊數字離場、新數字落下；三卡錯開在模板裡按序加 delay
+        numKeySeq += 1
+        etaNumKey.value[i] = `n${numKeySeq}`
         // 先摘掉再加回，動畫才能重新觸發；序號用 const 綁定，不重蹈 var 閉包串位的坑
         etaAnim.value[i] = false
         const idx = i
@@ -184,7 +231,7 @@ export function useGmb(): {
     const stamp = fmtNow()
     updatedAt.value = stamp
     stampKey.value += 1
-    setStatus('ok', `已更新 ${stamp}`)
+    setStatus('ok', `更新於 ${stamp}`)
   }
 
   /* ---------- 派生 ---------- */
@@ -209,7 +256,7 @@ export function useGmb(): {
     MTR_LINE_ORDER.map((code) => ({ code, name: MTR_LINES[code]?.name ?? code })),
   )
 
-  const mtrStations = computed<[string, string][]>(
+  const mtrStations = computed<[string, string, number, number][]>(
     () => MTR_LINES[mtr.value.line]?.stations ?? [],
   )
 
@@ -289,8 +336,10 @@ export function useGmb(): {
     return 'bg-muted-foreground/50'
   })
 
+  // 更新時間只在底部狀態行出現一次（status.message 的「更新於 HH:MM:SS」）；
+  // 這裡只留「每分鐘更新」，不再重複時間戳。
   const detailStats = computed<string>(() =>
-    updatedAt.value ? `每分鐘更新 · ${updatedAt.value}` : '',
+    updatedAt.value ? '每分鐘更新' : '',
   )
 
   function srcShort(src: string): string {
@@ -592,6 +641,7 @@ export function useGmb(): {
 
   /* ---------- 港鐵 ---------- */
   function onMtrLineChange(): void {
+    nearestInfo.value = ''
     mtr.value.dir = 'UP'
     const line = MTR_LINES[mtr.value.line]
     if (line && !line.stations.some(([code]) => code === mtr.value.sta)) {
@@ -601,6 +651,7 @@ export function useGmb(): {
   }
 
   function onMtrStationChange(): void {
+    nearestInfo.value = ''
     void mtrLoadEta()
   }
 
@@ -618,11 +669,64 @@ export function useGmb(): {
     }
   }
 
+  /* ---------- 港鐵：找最近車站（位置只在瀏覽器本地算，不上傳；不存經緯度） ---------- */
+  async function locateNearest(): Promise<void> {
+    if (locating.value) return
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      push('你的瀏覽器不支援定位，保留目前車站')
+      return
+    }
+    locating.value = true
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000,
+        })
+      })
+      saveMtrAuthorized()
+      const nearest = findNearestMtrStation(pos.coords.latitude, pos.coords.longitude)
+      if (!nearest) {
+        push('找不到附近車站，保留目前車站')
+        return
+      }
+      if (nearest.distM > 5000) {
+        push(`最近的港鐵站也在 5 公里外（距你約 ${(nearest.distM / 1000).toFixed(1)} 公里），保留目前車站`)
+        return
+      }
+      const distText =
+        nearest.distM < 1000
+          ? `${Math.round(nearest.distM)} 米`
+          : `${(nearest.distM / 1000).toFixed(1)} 公里`
+      mtr.value.line = nearest.line
+      mtr.value.sta = nearest.code
+      nearestInfo.value = `距你約 ${distText} · 最近：${nearest.lineName} ${nearest.name}`
+      await mtrLoadEta()
+    } catch (err) {
+      if (err instanceof GeolocationPositionError) {
+        if (err.code === err.PERMISSION_DENIED) push('已拒絕定位授權，保留目前車站')
+        else if (err.code === err.TIMEOUT) push('定位逾時，保留目前車站')
+        else push('定位失敗，保留目前車站')
+      } else {
+        push('定位失敗，保留目前車站')
+      }
+    } finally {
+      locating.value = false
+    }
+  }
+
+  /** 已授權過且自動定位開著時，進港鐵模式自動定位一次；首次進入不請求權限。 */
+  function maybeAutoLocate(): void {
+    if (readMtrAuthorized() && autoLocate.value) void locateNearest()
+  }
+
   /* ---------- 模式切換 / 自動刷新 ---------- */
   function setMode(next: Mode): void {
     mode.value = next
     if (next === 'mtr') {
       void mtrLoadEta()
+      maybeAutoLocate()
     } else if (roadKind.value === 'bus') {
       void busLoadEta()
     } else if (roadKind.value === 'gmb') {
@@ -633,10 +737,21 @@ export function useGmb(): {
     }
   }
 
-  function loadCurrentEta(): void {
-    if (mode.value === 'mtr') void mtrLoadEta()
-    else if (roadKind.value === 'bus') void busLoadEta()
-    else void loadEta()
+  async function loadCurrentEta(): Promise<void> {
+    if (mode.value === 'mtr') await mtrLoadEta()
+    else if (roadKind.value === 'bus') await busLoadEta()
+    else await loadEta()
+  }
+
+  /** 手動刷新：按鈕轉圈 + 禁用；三卡保持舊數字，等新數據回來才換（不先清空）。 */
+  async function refreshNow(): Promise<void> {
+    if (refreshing.value) return
+    refreshing.value = true
+    try {
+      await loadCurrentEta()
+    } finally {
+      refreshing.value = false
+    }
   }
 
   function startAutoRefresh(): void {
@@ -655,6 +770,14 @@ export function useGmb(): {
   }
 
   watch(autoRefresh, () => startAutoRefresh())
+
+  watch(autoLocate, (v) => {
+    try {
+      window.localStorage.setItem(MTR_AUTOLOCATE_KEY, v ? '1' : '0')
+    } catch {
+      // 寫不進去也不影響當次使用
+    }
+  })
 
   /* ---------- 事件 ---------- */
   function onSearch(): void {
@@ -711,6 +834,7 @@ export function useGmb(): {
       }
       mode.value = 'mtr'
       void mtrLoadEta()
+      maybeAutoLocate()
       return
     }
     // mode=gmb / mode=bus 都是舊地址，統一併入 road
@@ -743,6 +867,7 @@ export function useGmb(): {
   return {
     mode,
     loading,
+    refreshing,
     autoRefresh,
     routeInput,
     stopFilter,
@@ -753,11 +878,15 @@ export function useGmb(): {
     recent,
     bus,
     mtr,
+    locating,
+    nearestInfo,
+    autoLocate,
     status,
     updatedAt,
     stampKey,
     etaItems,
     etaAnim,
+    etaNumKey,
     etaCards,
     dirOptions,
     activeDirKey,
@@ -781,6 +910,8 @@ export function useGmb(): {
     onMtrLineChange,
     onMtrStationChange,
     onEtaAnimEnd,
+    locateNearest,
     loadCurrentEta,
+    refreshNow,
   }
 }

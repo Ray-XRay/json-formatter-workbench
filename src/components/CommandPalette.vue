@@ -148,12 +148,25 @@ function runActive(): void {
   if (action) runAction(action)
 }
 
+/**
+ * Prefetch all four route chunks while the palette is open, so picking a
+ * tool never waits on a first-visit chunk load. Static imports keep
+ * Vite's chunk splitting identical to the router's.
+ */
+function prefetchRouteChunks(): void {
+  void import('../views/JsonSqlView.vue')
+  void import('../views/PasswordView.vue')
+  void import('../views/QrBarcodeView.vue')
+  void import('../views/GmbView.vue')
+}
+
 watch(query, (): void => {
   activeIndex.value = 0
 })
 
 watch(isOpen, (open: boolean): void => {
   if (!open) return
+  prefetchRouteChunks()
   query.value = ''
   activeIndex.value = 0
   void nextTick((): void => {

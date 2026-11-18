@@ -67,4 +67,4 @@ npm run preview    # 预览生产构建
 
 ## 版本
 
-当前版本 2.0.0-alpha.4（主题重做：Paper / Terminal / Sakura 换成 Catppuccin Mocha / Gruvbox Dark / Dracula；整体 UI 通查修缮）。版本记录见 CHANGELOG.md。
+当前版本 2.0.0-alpha.5（移动端重做：手机单列主线、次要内容折叠、港铁定位找最近车站、到站数字掉落动画、路由过渡改 View Transitions）。版本记录见 CHANGELOG.md。
