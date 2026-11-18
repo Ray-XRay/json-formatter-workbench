@@ -949,18 +949,42 @@ input:focus-visible, textarea:focus-visible, .tree-toggle:focus-visible,
 /* ---------- 到站看板 v1.12：模式切換 + 港鐵行 ---------- */
 .gmb-mode { display: flex; gap: 6px; margin-bottom: 12px; }
 .gmb-mode .seg-btn { flex: 1; }
+
+/* ---------- 到站看板 v1.14：同編號多條路線候選 ---------- */
+.gmb-cands { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.gmb-cands:empty { display: none; }
+.gmb-cand { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: var(--text); cursor: pointer; }
+.gmb-cand:hover { border-color: var(--accent); }
+.gmb-cand.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.gmb-cand-main { font-size: 15px; font-weight: 700; }
+.gmb-cand-sub { font-size: 13px; color: var(--muted); }
 .gmb-mtr-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
 .gmb-mtr-row .gmb-stop-label { margin-top: 0; flex: 1; }
 .gmb-mtr-row .gmb-stop-label select { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; }
 
-/* ---------- 页面切换过渡：载入淡入 + 离开淡出，跳转不突兀 ---------- */
-@keyframes page-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ---------- 页面切换过渡：工具间跳转要丝滑 ----------
+   旧版（v1.13.1）只有淡入淡出还带 160ms 延迟：点下去半天没反应、旧页淡出后先空白一截、新页再淡入，
+   看着就 low。改成：
+   - 支持的浏览器（Chrome / Edge）用 View Transitions 跨页过渡：旧页淡出微缩、新页淡入轻抬，
+     两页直接交叠、中间没有空白，0.28 秒 easeOutQuint 缓动；
+   - 不支持的浏览器退回手动淡入上浮（只在工具间跳转时播一次，冷打开不播，标记见 theme.js）；
+   - 跳转本身不再延迟，点下去立即走。
+   减弱动态效果的用户：两边都不播。 */
+@view-transition { navigation: auto; }
+@keyframes vt-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(.985); }
 }
-body { animation: page-in .22s ease-out; }
-html.page-leaving body { opacity: 0; transition: opacity .16s ease; }
-@media (prefers-reduced-motion: reduce) {
-  body { animation: none; }
-  html.page-leaving body { transition: none; }
+@keyframes vt-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) { animation: vt-out .28s cubic-bezier(.22, 1, .36, 1) both; }
+  ::view-transition-new(root) { animation: vt-in .28s cubic-bezier(.22, 1, .36, 1) both; }
+  html.nav-enter:not(.vt) body { animation: page-in .28s cubic-bezier(.22, 1, .36, 1) backwards; }
 }

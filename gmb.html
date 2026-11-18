@@ -75,20 +75,20 @@
   <!-- 控制區置頂且吸頂：路線、方向、上車站都在第一屏，不用滑到底 -->
   <section class="gmb-card gmb-controls" id="routeCard">
     <div class="gmb-mode" id="modeTabs" role="tablist" aria-label="交通工具">
-      <button class="seg-btn active" type="button" data-mode="gmb">專線小巴</button>
-      <button class="seg-btn" type="button" data-mode="bus">巴士</button>
+      <button class="seg-btn active" type="button" data-mode="road">巴士 · 小巴</button>
       <button class="seg-btn" type="button" data-mode="mtr">港鐵</button>
     </div>
     <div class="gmb-search-row" id="busRow">
       <span class="gmb-route-code" id="routeCode">87M</span>
       <label class="gmb-route-label">
-        <input type="text" id="routeInput" value="87M" placeholder="例如 87M" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="路線號碼">
+        <input type="text" id="routeInput" value="87M" placeholder="例如 87M、1、101、968" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="路線號碼">
       </label>
       <button class="btn primary" id="btnSearch">查路線</button>
       <button class="btn" id="btnRefresh" title="重新查一次到站時間">刷新</button>
       <span class="hint" id="routeRegion"></span>
       <span class="hint" id="routeUpdated"></span>
     </div>
+    <div class="gmb-cands" id="routeCandidates" hidden></div>
     <div class="gmb-mtr-row" id="mtrRow" hidden>
       <label class="gmb-stop-label">綫
         <select id="lineSelect" aria-label="港鐵綫"></select>
@@ -135,7 +135,7 @@
     <div class="stop-list" id="stopList"></div>
   </details>
 
-  <p class="hint gmb-foot">小巴只支援專線小巴（綠色小巴），例如 87M、87A；巴士先試九巴、沒有再試城巴；港鐵選綫、選站即見下三班車。數據：運輸署 / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。</p>
+  <p class="hint gmb-foot">巴士 / 小巴：輸路線號碼，同一個編號有多條路線時（例如 1 號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換；港鐵選綫、選站即見下三班車。數據：運輸署 / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。</p>
 </main>
 
 <footer class="statusbar">

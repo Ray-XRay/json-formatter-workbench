@@ -191,12 +191,10 @@
     if (location.protocol === 'file:') {
       target = page === '/' ? 'index.html' : page.slice(1) + '.html';
     }
-    // 先淡出旧页面再跳转，新页面载入时淡入，切换不那么突兀
-    var reduceMotion = false;
-    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
-    if (reduceMotion) { location.href = target; return; }
-    document.documentElement.classList.add('page-leaving');
-    setTimeout(function () { location.href = target; }, 160);
+    // 工具间跳转：给新页面留个标记，让它播一次进入动画（冷打开不播）；
+    // 跨页过渡本身交给 View Transitions（支持的浏览器）或新页淡入（不支持的），这里不延迟、立即跳
+    try { sessionStorage.setItem('json-wb-nav', '1'); } catch (e) {}
+    location.href = target;
   }
   brandMenu.addEventListener('click', function (e) {
     var item = e.target.closest('.brand-item');

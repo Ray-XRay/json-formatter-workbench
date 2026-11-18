@@ -1,7 +1,7 @@
-/* 到站看板：專線小巴 / 巴士 / 港鐵實時到站。
+/* 到站看板：巴士 · 小巴 / 港鐵實時到站。
    數據全部來自政府公開接口、無需 key、瀏覽器直接請求（CORS: *）：
-   - 小巴：data.etagmb.gov.hk（輸路線 -> 自動試 NT/KLN/HKI -> 選方向 -> 選站 -> diff 就是分鐘數）
-   - 巴士：先試九巴 data.etabus.gov.hk，沒有再試城巴 rt.data.gov.hk/v2（九巴用 route-eta、城巴用 eta，分鐘數由到站時間戳算出）
+   - 巴士 · 小巴（合併模式）：輸路線號碼後同時查五個來源——專線小巴 data.etagmb.gov.hk（新界 / 九龍 / 港島）、
+     九巴 data.etabus.gov.hk、城巴 rt.data.gov.hk/v2；同一個編號有多條路線時全部列出、點一下自由切換（選方向 -> 選站 -> 看分鐘數）
    - 港鐵：rt.data.gov.hk/v1/transport/mtr/getSchedule.php（ttnt 欄位就是分鐘數） */
 (function () {
   'use strict';
@@ -55,12 +55,10 @@
     if (location.protocol === 'file:') {
       target = page === '/' ? 'index.html' : page.slice(1) + '.html';
     }
-    // 先淡出舊頁面再跳轉，新頁面載入時淡入，切換不那麼突兀
-    var reduceMotion = false;
-    try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
-    if (reduceMotion) { location.href = target; return; }
-    document.documentElement.classList.add('page-leaving');
-    setTimeout(function () { location.href = target; }, 160);
+    // 工具間跳轉：給新頁面留個標記，讓它播一次進入動畫（冷打開不播）；
+    // 跨頁過渡本身交給 View Transitions（支援的瀏覽器）或新頁淡入（不支援的），這裡不延遲、立即跳
+    try { sessionStorage.setItem('json-wb-nav', '1'); } catch (e) {}
+    location.href = target;
   }
   brandMenu.addEventListener('click', function (e) {
     var item = e.target.closest('.brand-item');
@@ -79,10 +77,13 @@
   var CTB_API = 'https://rt.data.gov.hk/v2/transport/citybus';
   var MTR_API = 'https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php';
   var REGIONS = ['NT', 'KLN', 'HKI'];
-  var REGION_NAME = { NT: '新界', KLN: '九龍', HKI: '港島' };
+  // 候選路線來源：gmb-NT / gmb-KLN / gmb-HKI / kmb / ctb
+  var SRC_LABEL = { 'gmb-NT': '專線小巴 · 新界', 'gmb-KLN': '專線小巴 · 九龍', 'gmb-HKI': '專線小巴 · 港島', kmb: '九巴', ctb: '城巴' };
+  var SRC_SHORT = { 'gmb-NT': '小巴·新界', 'gmb-KLN': '小巴·九龍', 'gmb-HKI': '小巴·港島', kmb: '九巴', ctb: '城巴' };
 
   var state = {
-    mode: 'gmb', loading: false, etaTimer: null,
+    mode: 'road', loading: false, etaTimer: null,
+    roadKind: '', roadSrc: '', roadCode: '', candidates: [],
     // 小巴
     routeCode: '', region: '', routeId: 0, directions: [], routeSeq: 0,
     stops: [], stopSeq: 0, stopName: '',
@@ -123,19 +124,33 @@
     return Math.max(0, Math.round((t - Date.now()) / 60000));
   }
 
-  /* ---------- 最近路線（只存路線號碼在本機，分小巴 / 巴士） ---------- */
-  function recentKey() { return state.mode === 'bus' ? 'gmb-wb-recent-bus' : 'gmb-wb-recent'; }
+  /* ---------- 最近路線：只存本機，記住路線號碼 + 來源（九巴 / 城巴 / 小巴地區），點一下直達同一條 ---------- */
   function getRecent() {
-    try {
-      var v = JSON.parse(localStorage.getItem(recentKey()) || '[]');
-      return Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string'; }).slice(0, 5) : [];
-    } catch (e) { return []; }
+    var out = [], seen = {};
+    // 舊版分開存的兩條 key（純字串）也合併進來，沿用
+    ['gmb-wb-recent', 'gmb-wb-recent-bus'].forEach(function (key) {
+      try {
+        var v = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!Array.isArray(v)) return;
+        v.forEach(function (x) {
+          var e = typeof x === 'string'
+            ? { code: x, src: '' }
+            : (x && typeof x.code === 'string' ? { code: x.code, src: x.src || '' } : null);
+          if (!e) return;
+          var k = e.code + '|' + e.src;
+          if (seen[k]) return;
+          seen[k] = 1;
+          out.push(e);
+        });
+      } catch (e) {}
+    });
+    return out.slice(0, 5);
   }
-  function saveRecent(code) {
+  function saveRecent(code, src) {
     try {
-      var list = getRecent().filter(function (x) { return x !== code; });
-      list.unshift(code);
-      localStorage.setItem(recentKey(), JSON.stringify(list.slice(0, 5)));
+      var list = getRecent().filter(function (x) { return !(x.code === code && x.src === (src || '')); });
+      list.unshift({ code: code, src: src || '' });
+      localStorage.setItem('gmb-wb-recent', JSON.stringify(list.slice(0, 5)));
     } catch (e) {}
     renderRecent();
   }
@@ -148,14 +163,14 @@
     label.className = 'hint';
     label.textContent = '最近：';
     box.appendChild(label);
-    list.forEach(function (code) {
+    list.forEach(function (e) {
       var b = document.createElement('button');
       b.className = 'chip';
       b.type = 'button';
-      b.textContent = code;
+      b.textContent = e.code + (e.src && SRC_SHORT[e.src] ? ' · ' + SRC_SHORT[e.src] : '');
       b.addEventListener('click', function () {
-        $('routeInput').value = code;
-        if (state.mode === 'bus') busLoadRoute(code, {}); else loadRoute(code, {});
+        $('routeInput').value = e.code;
+        if (e.src) roadLoadBySrc(e.code, e.src); else roadSearch(e.code, {});
       });
       box.appendChild(b);
     });
@@ -256,7 +271,7 @@
     setStatus('ok', '已更新 ' + stamp);
   }
 
-  /* ---------- 模式切換 ---------- */
+  /* ---------- 模式切換：road（巴士 · 小巴合併）/ mtr ---------- */
   function setMode(mode, opts) {
     opts = opts || {};
     state.mode = mode;
@@ -268,59 +283,79 @@
     $('stopLabel').hidden = mode === 'mtr';
     $('allStops').hidden = mode === 'mtr';
     $('recentChips').hidden = mode === 'mtr';
-    $('routeInput').placeholder = mode === 'bus' ? '例如 1、101、968' : '例如 87M';
-    $('routeCode').textContent = mode === 'mtr' ? '港鐵' : (mode === 'bus' ? (state.bus.code || '巴士') : (state.routeCode || '87M'));
+    $('routeCandidates').hidden = mode === 'mtr' || state.candidates.length <= 1;
+    $('routeInput').placeholder = mode === 'mtr' ? '' : '例如 87M、1、101、968';
+    $('routeCode').textContent = mode === 'mtr' ? '港鐵' : (state.roadCode || '巴士 · 小巴');
     if (mode === 'mtr') {
       renderMtrLines();
       mtrRenderStations(opts.sta);
       mtrLoadEta();
-    } else if (mode === 'bus') {
-      if (state.bus.code) { renderBusDirections(); renderStops(state.bus.stops, state.bus.stopSeq, busSetStop); busLoadEta(); }
-      else { $('dirBtns').innerHTML = ''; $('stopSelect').innerHTML = ''; renderEtaCards([]); setStatus('idle', '輸入巴士路線號碼，例如 1、101、968'); }
+    } else if (state.roadKind === 'bus') {
+      $('routeRegion').textContent = state.bus.op === 'KMB' ? '九巴' : '城巴';
+      renderBusDirections(); renderStops(state.bus.stops, state.bus.stopSeq, busSetStop); busLoadEta();
+    } else if (state.roadKind === 'gmb') {
+      $('routeRegion').textContent = SRC_LABEL['gmb-' + state.region] || state.region;
+      renderGmbDirections(); renderStops(state.stops, state.stopSeq, setStop); loadEta();
     } else {
-      if (state.routeCode) { renderGmbDirections(); renderStops(state.stops, state.stopSeq, setStop); loadEta(); }
-      else { loadRoute('87M', { dir: 2, stop: 1 }); }
+      // 還沒查過路線：預設就是 87M 四號碼頭出發（方向 2、站 1）
+      roadSearch('87M', { dir: 2, stop: 1 });
     }
     renderRecent();
   }
 
-  /* ================= 小巴 ================= */
-  function loadRoute(code, opts) {
+  /* ================= 巴士 · 小巴（合併）：同時查五個來源，同編號多條路線任選 ================= */
+  // 候選路線：{ src, code, label, summary, payload }
+  function roadSearch(code, opts) {
     code = (code || '').trim().toUpperCase();
     if (!code) { setStatus('warn', '請先輸入路線號碼'); return Promise.resolve(false); }
     if (state.loading) return Promise.resolve(false);
     state.loading = true;
     setStatus('idle', '正在找 ' + code + '…');
     $('routeInput').value = code;
-    var found = null;
-    var chain = Promise.resolve();
+    state.candidates = [];
+    var box = $('routeCandidates');
+    box.hidden = true;
+    box.innerHTML = '';
+    var probes = [];
+    // 專線小巴：新界 / 九龍 / 港島三個地區並行查
     REGIONS.forEach(function (region) {
-      chain = chain.then(function () {
-        if (found) return;
-        return fetchJson(GMB_API + '/route/' + region + '/' + encodeURIComponent(code))
-          .then(function (json) {
-            if (!found && json && Array.isArray(json.data) && json.data.length) {
-              found = { region: region, route: json.data[0] };
-            }
-          })
-          .catch(function () { /* 該地區沒有，試下一個 */ });
-      });
+      probes.push(fetchJson(GMB_API + '/route/' + region + '/' + encodeURIComponent(code))
+        .then(function (json) {
+          if (json && Array.isArray(json.data) && json.data.length) {
+            var r = json.data[0];
+            var d0 = (r.directions && r.directions[0]) || {};
+            return { src: 'gmb-' + region, code: code, label: SRC_LABEL['gmb-' + region],
+              summary: (d0.orig_tc || '') + ' ↔ ' + (d0.dest_tc || ''),
+              payload: { region: region, route: r } };
+          }
+          return null;
+        }).catch(function () { return null; }));
     });
-    return chain.then(function () {
+    // 九巴、城巴並行查
+    probes.push(tryKmb(code).then(function (f) {
+      return f ? { src: 'kmb', code: code, label: '九巴', summary: f.dirs[0].label, payload: f } : null;
+    }).catch(function () { return null; }));
+    probes.push(tryCtb(code).then(function (f) {
+      return f ? { src: 'ctb', code: code, label: '城巴', summary: f.dirs[0].label, payload: f } : null;
+    }).catch(function () { return null; }));
+    return Promise.all(probes).then(function (found) {
       state.loading = false;
-      if (!found) {
-        setStatus('err', '找不到路線 ' + code + '，只支援專線小巴');
+      var cands = found.filter(Boolean);
+      state.candidates = cands;
+      if (!cands.length) {
+        setStatus('err', '找不到路線 ' + code);
         showToast('找不到 ' + code + '，檢查一下號碼');
         return false;
       }
-      state.routeCode = code;
-      state.region = found.region;
-      state.routeId = found.route.route_id;
-      state.directions = found.route.directions || [];
-      saveRecent(code);
-      $('routeCode').textContent = code;
-      $('routeRegion').textContent = REGION_NAME[found.region] || found.region;
-      renderGmbDirections(opts.dir);
+      var pick = null;
+      if (opts && opts.src) {
+        cands.forEach(function (c) { if (c.src === opts.src) pick = c; });
+      }
+      // 只有一條就直接載入；多條就列出來等用戶自己選
+      if (cands.length === 1) pick = cands[0];
+      renderCandidates();
+      if (pick) return roadLoadCandidate(pick, opts);
+      setStatus('idle', '找到 ' + cands.length + ' 條同編號路線，請選一條');
       return true;
     }).catch(function (err) {
       state.loading = false;
@@ -328,6 +363,97 @@
       showToast('請求失敗：' + (err && err.message ? err.message : '網絡錯誤'));
       return false;
     });
+  }
+
+  function renderCandidates() {
+    var box = $('routeCandidates');
+    box.innerHTML = '';
+    var cands = state.candidates;
+    if (cands.length <= 1) { box.hidden = true; return; }
+    box.hidden = false;
+    var label = document.createElement('div');
+    label.className = 'hint';
+    label.textContent = '同一個編號有多條路線，請選一條：';
+    box.appendChild(label);
+    cands.forEach(function (c) {
+      var b = document.createElement('button');
+      b.className = 'gmb-cand' + (state.roadSrc === c.src && state.roadCode === c.code ? ' active' : '');
+      b.type = 'button';
+      var main = document.createElement('span');
+      main.className = 'gmb-cand-main';
+      main.textContent = c.label + ' ' + c.code;
+      var sub = document.createElement('span');
+      sub.className = 'gmb-cand-sub';
+      sub.textContent = c.summary;
+      b.appendChild(main);
+      b.appendChild(sub);
+      b.addEventListener('click', function () { roadLoadCandidate(c, {}); });
+      box.appendChild(b);
+    });
+  }
+
+  function roadLoadCandidate(cand, opts) {
+    opts = opts || {};
+    state.roadSrc = cand.src;
+    state.roadCode = cand.code;
+    if (cand.src.indexOf('gmb-') === 0) {
+      state.roadKind = 'gmb';
+      applyGmbRoute(cand.code, cand.payload.region, cand.payload.route, opts);
+    } else {
+      state.roadKind = 'bus';
+      applyBusRoute(cand.code, cand.payload, opts);
+    }
+    renderCandidates();
+    return Promise.resolve(true);
+  }
+
+  // 最近路線點回來：只查當時那個來源，查不到才退回全來源搜尋
+  function roadLoadBySrc(code, src) {
+    if (state.loading) return Promise.resolve(false);
+    setStatus('idle', '正在找 ' + code + '…');
+    var probe;
+    if (src.indexOf('gmb-') === 0) {
+      var region = src.slice(4);
+      probe = fetchJson(GMB_API + '/route/' + region + '/' + encodeURIComponent(code)).then(function (json) {
+        if (json && Array.isArray(json.data) && json.data.length) {
+          var r = json.data[0];
+          var d0 = (r.directions && r.directions[0]) || {};
+          return { src: src, code: code, label: SRC_LABEL[src],
+            summary: (d0.orig_tc || '') + ' ↔ ' + (d0.dest_tc || ''),
+            payload: { region: region, route: r } };
+        }
+        return null;
+      }).catch(function () { return null; });
+    } else if (src === 'kmb') {
+      probe = tryKmb(code).then(function (f) {
+        return f ? { src: 'kmb', code: code, label: '九巴', summary: f.dirs[0].label, payload: f } : null;
+      });
+    } else if (src === 'ctb') {
+      probe = tryCtb(code).then(function (f) {
+        return f ? { src: 'ctb', code: code, label: '城巴', summary: f.dirs[0].label, payload: f } : null;
+      });
+    } else {
+      return roadSearch(code, {});
+    }
+    return probe.then(function (cand) {
+      if (cand) {
+        state.candidates = [cand];
+        return roadLoadCandidate(cand, {});
+      }
+      return roadSearch(code, {});
+    });
+  }
+
+  function applyGmbRoute(code, region, route, opts) {
+    opts = opts || {};
+    state.routeCode = code;
+    state.region = region;
+    state.routeId = route.route_id;
+    state.directions = route.directions || [];
+    saveRecent(code, 'gmb-' + region);
+    $('routeCode').textContent = code;
+    $('routeRegion').textContent = SRC_LABEL['gmb-' + region] || region;
+    renderGmbDirections(opts.dir);
   }
 
   function renderGmbDirections(preferSeq) {
@@ -400,36 +526,14 @@
       });
   }
 
-  /* ================= 巴士（先九巴、再城巴） ================= */
-  function busLoadRoute(code, opts) {
-    code = (code || '').trim().toUpperCase();
-    if (!code) { setStatus('warn', '請先輸入路線號碼'); return Promise.resolve(false); }
-    if (state.loading) return Promise.resolve(false);
-    state.loading = true;
-    setStatus('idle', '正在找巴士 ' + code + '…');
-    $('routeInput').value = code;
-    return tryKmb(code).then(function (found) {
-      if (found) return found;
-      return tryCtb(code);
-    }).then(function (found) {
-      state.loading = false;
-      if (!found) {
-        setStatus('err', '找不到巴士路線 ' + code + '，檢查一下號碼');
-        showToast('找不到 ' + code);
-        return false;
-      }
-      state.bus = { op: found.op, code: code, dirs: found.dirs, dirKey: '', serviceType: found.serviceType || '1', stops: [], stopSeq: 0, stopId: '' };
-      saveRecent(code);
-      $('routeCode').textContent = code;
-      $('routeRegion').textContent = found.op === 'KMB' ? '九巴' : '城巴';
-      renderBusDirections(opts.dir);
-      return true;
-    }).catch(function (err) {
-      state.loading = false;
-      setStatus('err', '查不到，請檢查網絡後再試');
-      showToast('請求失敗：' + (err && err.message ? err.message : '網絡錯誤'));
-      return false;
-    });
+  /* ================= 巴士：九巴 / 城巴 ================= */
+  function applyBusRoute(code, found, opts) {
+    opts = opts || {};
+    state.bus = { op: found.op, code: code, dirs: found.dirs, dirKey: '', serviceType: found.serviceType || '1', stops: [], stopSeq: 0, stopId: '' };
+    saveRecent(code, found.op === 'KMB' ? 'kmb' : 'ctb');
+    $('routeCode').textContent = code;
+    $('routeRegion').textContent = found.op === 'KMB' ? '九巴' : '城巴';
+    renderBusDirections(opts.dir);
   }
 
   function tryKmb(code) {
@@ -451,21 +555,22 @@
     });
   }
 
+  // 城巴：/route 一次拿齊頭尾站（去程 / 回程方向名直接寫對，不用等站表載入才補）
   function tryCtb(code) {
-    var dirs = [];
-    var chain = Promise.resolve();
-    ['outbound', 'inbound'].forEach(function (dir) {
-      chain = chain.then(function () {
-        return fetchJson(CTB_API + '/route-stop/CTB/' + encodeURIComponent(code) + '/' + dir)
-          .then(function (json) {
-            if (json && json.data && json.data.length) dirs.push({ key: dir, label: dir === 'outbound' ? '去程' : '回程', serviceType: '1' });
-          }).catch(function () {});
-      });
-    });
-    // 城巴方向只有去程 / 回程兩個字，站表載入後再用頭尾站補全名稱
-    return chain.then(function () {
-      return dirs.length ? { op: 'CTB', dirs: dirs, serviceType: '1' } : null;
-    });
+    return fetchJson(CTB_API + '/route/CTB/' + encodeURIComponent(code))
+      .then(function (json) {
+        var d = json && json.data;
+        if (!d || !d.route) return null;
+        return {
+          op: 'CTB',
+          dirs: [
+            { key: 'outbound', label: d.orig_tc + ' → ' + d.dest_tc, serviceType: '1' },
+            { key: 'inbound', label: d.dest_tc + ' → ' + d.orig_tc, serviceType: '1' }
+          ],
+          serviceType: '1'
+        };
+      })
+      .catch(function () { return null; });
   }
 
   function renderBusDirections(preferKey) {
@@ -513,13 +618,6 @@
         }).catch(function () { return s; });
       })).then(function (filled) {
         bus.stops = filled.filter(function (s) { return s.name_tc; });
-        // 城巴方向名用頭尾站補全
-        if (bus.op === 'CTB' && bus.stops.length) {
-          bus.dirs.forEach(function (d) {
-            if (d.key === dir) d.label = bus.stops[0].name_tc + ' → ' + bus.stops[bus.stops.length - 1].name_tc;
-          });
-          renderDirButtons(bus.dirs.map(function (d) { return { key: d.key, label: d.label }; }), dir, function (k) { busSetDirection(k); });
-        }
         var stop = preferStop;
         if (!stop || !bus.stops.some(function (s) { return s.stop_seq === stop; })) {
           stop = bus.stops.length ? bus.stops[0].stop_seq : 0;
@@ -671,7 +769,7 @@
   /* ---------- 自動刷新：按當前模式 ---------- */
   function loadCurrentEta() {
     if (state.mode === 'mtr') return mtrLoadEta();
-    if (state.mode === 'bus') return busLoadEta();
+    if (state.roadKind === 'bus') return busLoadEta();
     return loadEta();
   }
   function startAutoRefresh() {
@@ -688,22 +786,22 @@
     b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
   });
   $('btnSearch').addEventListener('click', function () {
-    if (state.mode === 'bus') busLoadRoute($('routeInput').value, {}); else loadRoute($('routeInput').value, {});
+    if (state.mode !== 'mtr') roadSearch($('routeInput').value, {});
   });
   $('routeInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') {
-      if (state.mode === 'bus') busLoadRoute($('routeInput').value, {}); else loadRoute($('routeInput').value, {});
+    if (e.key === 'Enter' && state.mode !== 'mtr') {
+      roadSearch($('routeInput').value, {});
     }
   });
   $('btnRefresh').addEventListener('click', function () { loadCurrentEta(); });
   $('btnRefreshMtr').addEventListener('click', function () { mtrLoadEta(); });
   $('autoRefresh').addEventListener('change', function () { startAutoRefresh(); });
   $('stopFilter').addEventListener('input', function () {
-    if (state.mode === 'bus') renderStops(state.bus.stops, state.bus.stopSeq, busSetStop);
+    if (state.roadKind === 'bus') renderStops(state.bus.stops, state.bus.stopSeq, busSetStop);
     else renderStops(state.stops, state.stopSeq, setStop);
   });
   $('stopSelect').addEventListener('change', function () {
-    if (state.mode === 'bus') busSetStop(Number(this.value)); else setStop(Number(this.value));
+    if (state.roadKind === 'bus') busSetStop(Number(this.value)); else setStop(Number(this.value));
   });
   $('lineSelect').addEventListener('change', function () {
     state.mtr.line = this.value;
@@ -722,17 +820,14 @@
   startAutoRefresh();
 
   var params = new URLSearchParams(location.search);
-  var initMode = params.get('mode') || 'gmb';
+  var initMode = params.get('mode') || 'road';
   if (initMode === 'mtr') {
     state.mtr.line = params.get('line') || 'TWL';
     state.mtr.sta = params.get('sta') || 'KWF';
     state.mtr.dir = params.get('dir') || 'UP';
     setMode('mtr', { sta: state.mtr.sta });
-  } else if (initMode === 'bus') {
-    setMode('bus');
-    var busRoute = (params.get('route') || '').trim().toUpperCase();
-    if (busRoute) { $('routeInput').value = busRoute; busLoadRoute(busRoute, {}); }
   } else {
+    // mode=gmb / mode=bus 都是舊地址，統一併入 road
     var initRoute = (params.get('route') || '87M').trim().toUpperCase();
     var initDir = Number(params.get('dir') || '') || undefined;
     var initStop = Number(params.get('stop') || '') || undefined;
@@ -741,6 +836,6 @@
       initDir = 2; initStop = 1;
     }
     $('routeInput').value = initRoute;
-    loadRoute(initRoute, { dir: initDir, stop: initStop });
+    roadSearch(initRoute, { dir: initDir, stop: initStop, src: params.get('src') || '' });
   }
 })();
