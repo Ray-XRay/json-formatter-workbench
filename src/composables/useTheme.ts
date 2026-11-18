@@ -1,16 +1,99 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 
-export type ThemeMode = 'light' | 'dark' | 'system'
-export type ResolvedTheme = 'light' | 'dark'
+/** Signature themes. `light` / `dark` are the spec defaults; the rest are
+ *  signature themes with their own accent and syntax colours. */
+export type ThemeId = 'light' | 'dark' | 'tokyonight' | 'paper' | 'terminal' | 'sakura'
+/** What the user picks: a theme, or follow the OS. */
+export type ThemeMode = ThemeId | 'system'
+
+export interface ThemeMeta {
+  /** English identifier (stored in localStorage). */
+  id: ThemeId
+  /** Chinese display name. */
+  label: string
+  /** English display name. */
+  nameEn: string
+  /** True when the theme is dark (drives the `.dark` class + color-scheme). */
+  dark: boolean
+  /** Swatch colours for the theme picker dot. */
+  swatchBg: string
+  swatchAccent: string
+  /** One-line description shown in the theme picker. */
+  blurb: string
+}
+
+export const THEMES: readonly ThemeMeta[] = [
+  {
+    id: 'light',
+    label: '浅色',
+    nameEn: 'Light',
+    dark: false,
+    swatchBg: '#fafafa',
+    swatchAccent: '#18181b',
+    blurb: '冷灰底 · 纯白卡片',
+  },
+  {
+    id: 'dark',
+    label: '深色',
+    nameEn: 'Dark',
+    dark: true,
+    swatchBg: '#09090b',
+    swatchAccent: '#fafafa',
+    blurb: '深邃炭黑 · 微弱高光边框',
+  },
+  {
+    id: 'tokyonight',
+    label: '东京之夜',
+    nameEn: 'Tokyo Night',
+    dark: true,
+    swatchBg: '#1a1b26',
+    swatchAccent: '#7aa2f7',
+    blurb: '深海军蓝 · 蓝紫点缀',
+  },
+  {
+    id: 'paper',
+    label: '暖纸',
+    nameEn: 'Paper',
+    dark: false,
+    swatchBg: '#f6f1e7',
+    swatchAccent: '#b45309',
+    blurb: '暖米纸色 · 琥珀点缀',
+  },
+  {
+    id: 'terminal',
+    label: '终端绿',
+    nameEn: 'Terminal',
+    dark: true,
+    swatchBg: '#050805',
+    swatchAccent: '#22c55e',
+    blurb: '磷光绿 · 黑底终端',
+  },
+  {
+    id: 'sakura',
+    label: '樱花',
+    nameEn: 'Sakura',
+    dark: false,
+    swatchBg: '#fdf2f7',
+    swatchAccent: '#db2777',
+    blurb: '柔和粉紫 · 樱花点缀',
+  },
+] as const
+
+export const THEME_IDS: readonly ThemeId[] = THEMES.map((t: ThemeMeta): ThemeId => t.id)
+export const THEME_MODES: readonly ThemeMode[] = [...THEME_IDS, 'system']
 
 const STORAGE_KEY = 'wb20-theme'
 const TRANSITION_CLASS = 'theme-transition'
 const TRANSITION_MS = 300
 
+function isThemeMode(v: string | null): v is ThemeMode {
+  return v !== null && (THEME_MODES as readonly string[]).includes(v)
+}
+
 function readStoredMode(): ThemeMode {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY)
-    if (v === 'light' || v === 'dark' || v === 'system') return v
+    if (isThemeMode(v)) return v
   } catch {
     /* storage unavailable — fall through to system */
   }
@@ -21,9 +104,16 @@ const mode = ref<ThemeMode>(readStoredMode())
 const systemDark = ref<boolean>(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
 /** The theme actually rendered: explicit choice, or the OS preference when on System. */
-const resolved = computed<ResolvedTheme>((): ResolvedTheme =>
+const resolved = computed<ThemeId>((): ThemeId =>
   mode.value === 'system' ? (systemDark.value ? 'dark' : 'light') : mode.value,
 )
+
+const meta = computed<ThemeMeta>((): ThemeMeta => {
+  const found = THEMES.find((t: ThemeMeta): boolean => t.id === resolved.value)
+  return found ?? THEMES[0]
+})
+
+const isDark = computed<boolean>((): boolean => meta.value.dark)
 
 function applyTheme(animate: boolean): void {
   const root = document.documentElement
@@ -34,8 +124,9 @@ function applyTheme(animate: boolean): void {
       root.classList.remove(TRANSITION_CLASS)
     }, TRANSITION_MS)
   }
-  root.classList.toggle('dark', resolved.value === 'dark')
-  root.style.colorScheme = resolved.value
+  root.setAttribute('data-theme', resolved.value)
+  root.classList.toggle('dark', meta.value.dark)
+  root.style.colorScheme = meta.value.dark ? 'dark' : 'light'
 }
 
 let mediaListenerInstalled = false
@@ -52,13 +143,15 @@ function installMediaListener(): void {
   else mq.addListener(onChange)
 }
 
-// Initial paint: the inline script in index.html already set the class before
+// Initial paint: the inline script in index.html already set the theme before
 // first paint; this is a no-op safety net that keeps DOM and state in sync.
 applyTheme(false)
 
 export function useTheme(): {
   mode: Ref<ThemeMode>
-  resolved: ComputedRef<ResolvedTheme>
+  resolved: ComputedRef<ThemeId>
+  meta: ComputedRef<ThemeMeta>
+  isDark: ComputedRef<boolean>
   setMode: (next: ThemeMode) => void
   cycleMode: () => void
 } {
@@ -75,12 +168,12 @@ export function useTheme(): {
     applyTheme(true)
   }
 
-  /** Light -> Dark -> System -> Light (top-bar toggle button). */
+  /** Cycles through every mode (top-bar menu also offers direct picking). */
   function cycleMode(): void {
-    const order: ThemeMode[] = ['light', 'dark', 'system']
+    const order: ThemeMode[] = [...THEME_IDS, 'system']
     const next = order[(order.indexOf(mode.value) + 1) % order.length]
     setMode(next as ThemeMode)
   }
 
-  return { mode, resolved, setMode, cycleMode }
+  return { mode, resolved, meta, isDark, setMode, cycleMode }
 }

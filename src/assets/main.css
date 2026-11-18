@@ -2,7 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* shadcn design tokens, one set per theme. Tokens are HSL triplets so
+ * Tailwind's `hsl(var(--…))` colours keep working in every theme.
+ * The active theme is `html[data-theme="<id>"]`; `:root` is the light
+ * fallback before the no-flash script runs. `.dark` only drives Tailwind's
+ * `dark:` variants and colour-scheme — tokens come from data-theme. */
+
+:root,
+html[data-theme='light'] {
   --background: 0 0% 98%;
   --foreground: 240 10% 4%;
   --card: 0 0% 100%;
@@ -23,9 +30,18 @@
   --input: 240 6% 90%;
   --ring: 240 6% 10%;
   --radius: 0.5rem;
+  /* Brand gradient (logo) + JSON syntax colours. */
+  --brand-1: 240 6% 10%;
+  --brand-2: 240 4% 32%;
+  --code-key: 221 83% 53%;
+  --code-string: 142 71% 34%;
+  --code-number: 19 91% 37%;
+  --code-bool: 271 76% 45%;
+  --code-null: 346 77% 41%;
+  --code-punct: 215 20% 46%;
 }
 
-.dark {
+html[data-theme='dark'] {
   --background: 240 10% 4%;
   --foreground: 0 0% 98%;
   --card: 240 10% 4%;
@@ -45,6 +61,139 @@
   --border: 240 5% 15%;
   --input: 240 4% 16%;
   --ring: 240 5% 65%;
+  --brand-1: 0 0% 98%;
+  --brand-2: 240 5% 65%;
+  --code-key: 199 95% 74%;
+  --code-string: 142 77% 73%;
+  --code-number: 32 95% 76%;
+  --code-bool: 258 90% 82%;
+  --code-null: 350 89% 76%;
+  --code-punct: 215 20% 65%;
+}
+
+/* Tokyo Night — deep navy #1a1b26, lavender-white text, blue/purple accents.
+ * Ported from the 1.x Vue build (style.css html[data-theme="tokyonight"]). */
+html[data-theme='tokyonight'] {
+  --background: 231 19% 13%;
+  --foreground: 230 77% 86%;
+  --card: 232 27% 16%;
+  --card-foreground: 230 77% 86%;
+  --popover: 232 27% 16%;
+  --popover-foreground: 230 77% 86%;
+  --primary: 221 89% 72%;
+  --primary-foreground: 231 19% 13%;
+  --secondary: 229 24% 21%;
+  --secondary-foreground: 230 77% 86%;
+  --muted: 229 24% 21%;
+  --muted-foreground: 233 14% 54%;
+  --accent: 229 24% 21%;
+  --accent-foreground: 230 77% 86%;
+  --destructive: 349 89% 72%;
+  --destructive-foreground: 231 19% 13%;
+  --border: 229 22% 23%;
+  --input: 229 22% 23%;
+  --ring: 221 89% 72%;
+  --brand-1: 221 89% 72%;
+  --brand-2: 265 86% 79%;
+  --code-key: 221 89% 72%;
+  --code-string: 88 55% 61%;
+  --code-number: 22 100% 70%;
+  --code-bool: 265 86% 79%;
+  --code-null: 349 89% 72%;
+  --code-punct: 193 100% 77%;
+}
+
+/* Paper — warm paper cream, amber accent. */
+html[data-theme='paper'] {
+  --background: 42 41% 93%;
+  --foreground: 20 6% 15%;
+  --card: 48 100% 98%;
+  --card-foreground: 20 6% 15%;
+  --popover: 48 100% 98%;
+  --popover-foreground: 20 6% 15%;
+  --primary: 32 90% 37%;
+  --primary-foreground: 43 100% 96%;
+  --secondary: 43 40% 90%;
+  --secondary-foreground: 20 6% 15%;
+  --muted: 43 40% 90%;
+  --muted-foreground: 25 5% 45%;
+  --accent: 43 40% 90%;
+  --accent-foreground: 20 6% 15%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 40 29% 86%;
+  --input: 40 29% 86%;
+  --ring: 32 90% 37%;
+  --brand-1: 32 94% 46%;
+  --brand-2: 19 91% 37%;
+  --code-key: 32 90% 29%;
+  --code-string: 142 71% 34%;
+  --code-number: 19 91% 37%;
+  --code-bool: 271 76% 45%;
+  --code-null: 346 77% 41%;
+  --code-punct: 25 5% 45%;
+}
+
+/* Terminal — phosphor green on near-black. */
+html[data-theme='terminal'] {
+  --background: 120 23% 3%;
+  --foreground: 135 65% 80%;
+  --card: 120 21% 5%;
+  --card-foreground: 135 65% 80%;
+  --popover: 120 21% 5%;
+  --popover-foreground: 135 65% 80%;
+  --primary: 142 71% 45%;
+  --primary-foreground: 120 23% 3%;
+  --secondary: 120 24% 8%;
+  --secondary-foreground: 135 65% 80%;
+  --muted: 120 24% 8%;
+  --muted-foreground: 134 19% 45%;
+  --accent: 120 24% 8%;
+  --accent-foreground: 135 65% 80%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 120 23% 3%;
+  --border: 130 19% 14%;
+  --input: 130 19% 14%;
+  --ring: 142 71% 45%;
+  --brand-1: 142 71% 45%;
+  --brand-2: 142 76% 60%;
+  --code-key: 142 76% 60%;
+  --code-string: 142 77% 73%;
+  --code-number: 45 96% 64%;
+  --code-bool: 187 92% 69%;
+  --code-null: 0 91% 71%;
+  --code-punct: 134 19% 45%;
+}
+
+/* Sakura — soft pink, lavender accent. */
+html[data-theme='sakura'] {
+  --background: 335 71% 97%;
+  --foreground: 335 37% 18%;
+  --card: 336 100% 98%;
+  --card-foreground: 335 37% 18%;
+  --popover: 336 100% 98%;
+  --popover-foreground: 335 37% 18%;
+  --primary: 332 81% 51%;
+  --primary-foreground: 347 100% 97%;
+  --secondary: 335 71% 95%;
+  --secondary-foreground: 335 37% 18%;
+  --muted: 335 71% 95%;
+  --muted-foreground: 330 21% 52%;
+  --accent: 335 71% 95%;
+  --accent-foreground: 335 37% 18%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 332 55% 90%;
+  --input: 332 55% 90%;
+  --ring: 332 81% 51%;
+  --brand-1: 330 81% 60%;
+  --brand-2: 271 81% 56%;
+  --code-key: 334 78% 36%;
+  --code-string: 142 71% 34%;
+  --code-number: 19 91% 37%;
+  --code-bool: 271 76% 45%;
+  --code-null: 346 77% 41%;
+  --code-punct: 330 21% 52%;
 }
 
 @layer base {
@@ -66,6 +215,56 @@
     background: hsl(var(--accent));
     color: hsl(var(--accent-foreground));
   }
+
+  /* Slim scrollbars, tinted per theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Brand logo gradient (per-theme --brand-1 / --brand-2). */
+.logo-gradient {
+  background: linear-gradient(135deg, hsl(var(--brand-1)), hsl(var(--brand-2)));
+}
+
+/* JSON syntax tokens (used by the highlighted sample in JsonSqlView). */
+.tok-key {
+  color: hsl(var(--code-key));
+}
+
+.tok-string {
+  color: hsl(var(--code-string));
+}
+
+.tok-number {
+  color: hsl(var(--code-number));
+}
+
+.tok-bool {
+  color: hsl(var(--code-bool));
+}
+
+.tok-null {
+  color: hsl(var(--code-null));
+}
+
+.tok-punct {
+  color: hsl(var(--code-punct));
 }
 
 /* Theme-switch fade: applied to <html> by useTheme during a mode change. */
@@ -126,6 +325,38 @@
   animation: copy-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* Dropdown menu (theme picker) enter. */
+.dropdown-content[data-state='open'] {
+  animation: dropdown-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ETA card refresh rise (GMB preview). */
+@keyframes eta-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-eta-rise {
+  animation: eta-rise 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .route-fade-enter-active,
   .route-fade-leave-active,
@@ -134,7 +365,12 @@
     transition: none;
   }
 
-  .animate-copy-pop {
+  .animate-copy-pop,
+  .animate-eta-rise {
+    animation: none;
+  }
+
+  .dropdown-content[data-state='open'] {
     animation: none;
   }
 }

@@ -1,37 +1,11 @@
 <script setup lang="ts">
 import { onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import {
-  Braces,
-  BusFront,
-  KeyRound,
-  Layers,
-  QrCode,
-  X,
-  type LucideIcon,
-} from 'lucide-vue-next'
+import { Layers, X } from 'lucide-vue-next'
+import SidebarNav from './SidebarNav.vue'
 import { useSidebar } from '../composables/useSidebar'
 import { cn } from '../lib/utils'
 
-interface NavItem {
-  label: string
-  to: string
-  icon: LucideIcon
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { label: 'JSON / SQL 工作台', to: '/json-sql', icon: Braces },
-  { label: '密码与助记词', to: '/password', icon: KeyRound },
-  { label: 'QR / 条码', to: '/qr-barcode', icon: QrCode },
-  { label: '到站看板', to: '/gmb', icon: BusFront },
-]
-
-const route = useRoute()
 const { collapsed, mobileOpen, closeMobile } = useSidebar()
-
-function isActive(to: string): boolean {
-  return route.path === to
-}
 
 function onEscape(e: KeyboardEvent): void {
   if (e.key === 'Escape') closeMobile()
@@ -69,12 +43,12 @@ onUnmounted((): void => {
       "
     >
       <span
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
+        class="logo-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm ring-1 ring-black/10"
       >
         <Layers class="h-4 w-4" />
       </span>
       <template v-if="!collapsed">
-        <span class="truncate text-sm font-semibold">MyWorkbench</span>
+        <span class="truncate text-sm font-semibold tracking-tight">MyWorkbench</span>
         <span
           class="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
         >
@@ -83,30 +57,26 @@ onUnmounted((): void => {
       </template>
     </div>
 
-    <nav aria-label="工具" class="flex-1 space-y-1 overflow-y-auto p-2">
-      <RouterLink
-        v-for="item in NAV_ITEMS"
-        :key="item.to"
-        :to="item.to"
-        :title="item.label"
-        :aria-current="isActive(item.to) ? 'page' : undefined"
-        :class="
-          cn(
-            'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-            collapsed && 'justify-center px-0',
-            isActive(item.to)
-              ? 'bg-accent font-medium text-foreground'
-              : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-          )
-        "
-      >
-        <component :is="item.icon" class="h-5 w-5 shrink-0" />
-        <span v-if="!collapsed" class="truncate">{{ item.label }}</span>
-      </RouterLink>
-    </nav>
+    <SidebarNav :collapsed="collapsed" />
 
-    <div v-if="!collapsed" class="shrink-0 border-t border-border px-3 py-3 text-xs text-muted-foreground">
-      2.0.0-alpha
+    <div class="shrink-0 border-t border-border px-3 py-3">
+      <template v-if="!collapsed">
+        <p class="text-xs text-muted-foreground">
+          <span
+            class="mr-1.5 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium"
+          >
+            2.0.0-alpha.2
+          </span>
+        </p>
+        <p class="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          按
+          <kbd class="rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px]">
+            ⌘K
+          </kbd>
+          快速跳转
+        </p>
+      </template>
+      <p v-else class="text-center font-mono text-[10px] text-muted-foreground">2.0</p>
     </div>
   </aside>
 
@@ -125,11 +95,11 @@ onUnmounted((): void => {
     >
       <div class="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
         <span
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground"
+          class="logo-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm ring-1 ring-black/10"
         >
           <Layers class="h-4 w-4" />
         </span>
-        <span class="flex-1 truncate text-sm font-semibold">MyWorkbench</span>
+        <span class="flex-1 truncate text-sm font-semibold tracking-tight">MyWorkbench</span>
         <span
           class="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
         >
@@ -145,30 +115,14 @@ onUnmounted((): void => {
         </button>
       </div>
 
-      <nav aria-label="工具" class="flex-1 space-y-1 overflow-y-auto p-2">
-        <RouterLink
-          v-for="item in NAV_ITEMS"
-          :key="item.to"
-          :to="item.to"
-          :title="item.label"
-          :aria-current="isActive(item.to) ? 'page' : undefined"
-          :class="
-            cn(
-              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
-              isActive(item.to)
-                ? 'bg-accent font-medium text-foreground'
-                : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-            )
-          "
-          @click="closeMobile()"
-        >
-          <component :is="item.icon" class="h-5 w-5 shrink-0" />
-          <span class="truncate">{{ item.label }}</span>
-        </RouterLink>
-      </nav>
+      <SidebarNav @navigate="closeMobile()" />
 
       <div class="shrink-0 border-t border-border px-3 py-3 text-xs text-muted-foreground">
-        2.0.0-alpha
+        <span
+          class="mr-1.5 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium"
+        >
+          2.0.0-alpha.2
+        </span>
       </div>
     </aside>
   </Transition>

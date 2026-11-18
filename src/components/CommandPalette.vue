@@ -9,24 +9,17 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import {
-  Braces,
-  BusFront,
-  Check,
-  KeyRound,
-  Monitor,
-  Moon,
-  QrCode,
-  Sun,
-} from 'lucide-vue-next'
+import { Braces, BusFront, Check, KeyRound, Monitor, QrCode } from 'lucide-vue-next'
 import { useCommandPalette } from '../composables/useCommandPalette'
-import { useTheme, type ThemeMode } from '../composables/useTheme'
+import { THEMES, useTheme, type ThemeMeta, type ThemeMode } from '../composables/useTheme'
 
 interface PaletteAction {
   label: string
   keywords: string
   hint: string
-  icon: Component
+  icon: Component | null
+  swatchBg?: string
+  swatchAccent?: string
   run: () => void
   /** Theme mode this action sets, if it is a theme action. */
   themeMode?: ThemeMode
@@ -40,7 +33,7 @@ const query = ref('')
 const activeIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const actions = computed<PaletteAction[]>(() => [
+const toolActions: PaletteAction[] = [
   {
     label: 'JSON / SQL 工作台',
     keywords: 'json sql 格式化',
@@ -77,45 +70,62 @@ const actions = computed<PaletteAction[]>(() => [
       void router.push('/gmb')
     },
   },
-  {
-    label: '浅色主题',
-    keywords: '浅色 主题 light',
-    hint: '',
-    icon: Sun,
-    themeMode: 'light',
-    run: (): void => {
-      setMode('light')
-    },
-  },
-  {
-    label: '深色主题',
-    keywords: '深色 主题 dark',
-    hint: '',
-    icon: Moon,
-    themeMode: 'dark',
-    run: (): void => {
-      setMode('dark')
-    },
-  },
+]
+
+const themeActions: PaletteAction[] = [
+  ...THEMES.map(
+    (theme: ThemeMeta): PaletteAction => ({
+      label: `${theme.label}主题`,
+      keywords: `主题 ${theme.nameEn.toLowerCase()} ${theme.label}`,
+      hint: theme.nameEn,
+      icon: null,
+      swatchBg: theme.swatchBg,
+      swatchAccent: theme.swatchAccent,
+      themeMode: theme.id,
+      run: (): void => {
+        setMode(theme.id)
+      },
+    }),
+  ),
   {
     label: '跟随系统',
     keywords: '跟随 系统 主题 system',
-    hint: '',
+    hint: 'System',
     icon: Monitor,
     themeMode: 'system',
     run: (): void => {
       setMode('system')
     },
   },
-])
+]
 
-const filteredActions = computed<PaletteAction[]>(() => {
+interface PaletteGroup {
+  label: string
+  items: PaletteAction[]
+}
+
+function matches(action: PaletteAction, q: string): boolean {
+  return `${action.label} ${action.keywords}`.toLowerCase().includes(q)
+}
+
+const groups = computed<PaletteGroup[]>(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return actions.value
-  return actions.value.filter((action: PaletteAction): boolean =>
-    `${action.label} ${action.keywords}`.toLowerCase().includes(q),
-  )
+  const filter = (items: PaletteAction[]): PaletteAction[] =>
+    q ? items.filter((a: PaletteAction): boolean => matches(a, q)) : items
+  return [
+    { label: '工具', items: filter(toolActions) },
+    { label: '主题', items: filter(themeActions) },
+  ].filter((g: PaletteGroup): boolean => g.items.length > 0)
 })
+
+/** Flat action list for keyboard navigation (group headers are not selectable). */
+const flatActions = computed<PaletteAction[]>(() =>
+  groups.value.flatMap((g: PaletteGroup): PaletteAction[] => g.items),
+)
+
+function flatIndexOf(action: PaletteAction): number {
+  return flatActions.value.indexOf(action)
+}
 
 function runAction(action: PaletteAction): void {
   action.run()
@@ -123,18 +133,18 @@ function runAction(action: PaletteAction): void {
 }
 
 function moveDown(): void {
-  if (filteredActions.value.length === 0) return
-  activeIndex.value = (activeIndex.value + 1) % filteredActions.value.length
+  if (flatActions.value.length === 0) return
+  activeIndex.value = (activeIndex.value + 1) % flatActions.value.length
 }
 
 function moveUp(): void {
-  if (filteredActions.value.length === 0) return
+  if (flatActions.value.length === 0) return
   activeIndex.value =
-    (activeIndex.value - 1 + filteredActions.value.length) % filteredActions.value.length
+    (activeIndex.value - 1 + flatActions.value.length) % flatActions.value.length
 }
 
 function runActive(): void {
-  const action = filteredActions.value[activeIndex.value]
+  const action = flatActions.value[activeIndex.value]
   if (action) runAction(action)
 }
 
@@ -177,28 +187,47 @@ watch(isOpen, (open: boolean): void => {
           />
         </div>
 
-        <ul v-if="filteredActions.length > 0" class="max-h-80 overflow-y-auto p-2">
-          <li
-            v-for="(action, index) in filteredActions"
-            :key="action.label"
-            :class="[
-              'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm',
-              index === activeIndex ? 'bg-accent' : '',
-            ]"
-            @mouseenter="activeIndex = index"
-            @click="runAction(action)"
-          >
-            <component :is="action.icon" class="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span class="flex-1 truncate">{{ action.label }}</span>
-            <Check
-              v-if="action.themeMode && mode === action.themeMode"
-              class="h-4 w-4 shrink-0"
-            />
-            <span v-else-if="action.hint" class="shrink-0 text-xs text-muted-foreground">
-              {{ action.hint }}
-            </span>
-          </li>
-        </ul>
+        <div v-if="flatActions.length > 0" class="max-h-80 overflow-y-auto p-2">
+          <template v-for="group in groups" :key="group.label">
+            <p class="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {{ group.label }}
+            </p>
+            <ul>
+              <li
+                v-for="action in group.items"
+                :key="action.label"
+                :class="[
+                  'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm',
+                  flatIndexOf(action) === activeIndex ? 'bg-accent' : '',
+                ]"
+                @mouseenter="activeIndex = flatIndexOf(action)"
+                @click="runAction(action)"
+              >
+                <span
+                  v-if="action.swatchBg"
+                  class="h-4 w-4 shrink-0 rounded-full border"
+                  :style="{
+                    backgroundColor: action.swatchBg,
+                    borderColor: action.swatchAccent,
+                  }"
+                />
+                <component
+                  :is="action.icon"
+                  v-else-if="action.icon"
+                  class="h-4 w-4 shrink-0 text-muted-foreground"
+                />
+                <span class="flex-1 truncate">{{ action.label }}</span>
+                <Check
+                  v-if="action.themeMode && mode === action.themeMode"
+                  class="h-4 w-4 shrink-0"
+                />
+                <span v-else-if="action.hint" class="shrink-0 text-xs text-muted-foreground">
+                  {{ action.hint }}
+                </span>
+              </li>
+            </ul>
+          </template>
+        </div>
         <p v-else class="px-4 py-8 text-center text-sm text-muted-foreground">
           没有匹配的结果
         </p>

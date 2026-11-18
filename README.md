@@ -9,7 +9,7 @@
 - **Vue Router 4**（history 模式，四条懒加载路由）
 - **Tailwind CSS 3.4** + shadcn-vue 设计令牌（`reka-ui` 原语）
 - **lucide-vue-next** 图标、`@vueuse/core` / `@vueuse/motion`、`@formkit/auto-animate`
-- **Light / Dark / System** 三档主题（跟随系统，切换无闪烁）
+- **主题**：Light / Dark / Tokyo Night / Paper / Terminal / Sakura 六档 + 跟随系统（System），顶栏下拉选择，切换无闪烁、带平滑过渡
 
 ## 开发
 
@@ -32,8 +32,8 @@ npm run preview    # 预览生产构建
 │   ├── App.vue                 # 根组件
 │   ├── assets/
 │   │   └── main.css            # Tailwind + shadcn 设计令牌 + 动画
-│   ├── components/             # 共享组件（AppShell、CommandPalette、CopyButton、ErrorBoundary…）
-│   ├── composables/            # useTheme / useToast / useSidebar / useCommandPalette
+│   ├── components/             # 共享组件（Sidebar、SidebarNav、ThemeMenu、CommandPalette、CopyButton、ErrorBoundary、PageHeader、QrPreview…）
+│   ├── composables/            # useTheme（6 主题 + System）/ useToast / useSidebar / useCommandPalette
 │   ├── layouts/                # 布局
 │   ├── lib/
 │   │   └── utils.ts            # cn() 等工具函数
@@ -47,4 +47,4 @@ npm run preview    # 预览生产构建
 
 ## Phase 1 范围
 
-Phase 1 只做**骨架**：App Shell（可折叠侧边栏 + 顶部状态栏 + ⌘K 命令面板 + CopyButton + ErrorBoundary）、四条懒加载路由、Light / Dark / System 主题与配套动画。**不迁移任何业务算法**——四个工具页目前是空壳占位，业务逻辑在后续阶段迁入。
+Phase 1 只做**骨架**：App Shell（可折叠侧边栏 + 顶部状态栏 + ⌘K 命令面板 + CopyButton + ErrorBoundary）、四条懒加载路由、六档主题（Light / Dark / Tokyo Night / Paper / Terminal / Sakura）+ 跟随系统与配套动画。**不迁移任何业务算法**——四个工具页目前是带真实感示例的占位预览，业务逻辑在后续阶段迁入。
