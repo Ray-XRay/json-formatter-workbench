@@ -2,11 +2,26 @@
    纯静态零后端；随机数用浏览器内置的安全随机数（crypto.getRandomValues）本地生成。
    助记词按 BIP39 标准：2048 个官方单词（bip39-words.js，本地 vendor），带校验和，
    12/15/18/21/24 词；校验和用 crypto.subtle 算 SHA-256。
-   生成的密码/助记词/随机数不会保存到任何地方，刷新页面就消失；只记选项。 */
+   生成的密码/助记词/随机数不会保存到任何地方，刷新页面就消失；只记选项。
+   Vue 3 迁移（v1.15.0）：状态全部进 Vue 的 reactive，模板用 v-model/@click 绑控件；
+   渲染仍走原来的同步 DOM 写法（updateModeUI / renderPasswordList / showStrength 等），
+   由 flush:'sync' 的 watcher 驱动——测试是同步读 DOM 的，Vue 的异步渲染会让它们读到旧值，
+   所以输出一律同步写 DOM，不用 {{ }} / v-show / v-for（lengthValue 那个 {{ }} 只做展示，无测试读它）。 */
 (function () {
   'use strict';
 
+  var Vue = window.Vue;
   function $(id) { return document.getElementById(id); }
+
+  /* Vue 状态：与模板的 v-model 对应；渲染函数直接读它 */
+  var state = Vue.reactive({
+    mode: 'random', length: 16, upper: true, lower: true, digits: true, symbols: true,
+    excludeAmbiguous: false, mnemonicWords: 12,
+    numMin: 1, numMax: 100, numCount: 5, numPad: false, numPadDigits: 4,
+    checkInput: '', mnemonicPaste: '', theme: 'dark'
+  });
+  /* 恢复选项/修正值时临时关 watcher，避免中间态反复触发 generate */
+  var suppressWatch = false;
 
   var toastTimer = null;
   function showToast(msg) {
@@ -25,27 +40,27 @@
 
   /* ---------- 主题（与其它页共用 json-wb-theme） ---------- */
   function applyTheme(theme) {
+    state.theme = theme;
     document.documentElement.setAttribute('data-theme', theme);
     var sel = $('themeSelect');
     if (sel) sel.value = theme;
     try { localStorage.setItem('json-wb-theme', theme); } catch (e) {}
   }
-  $('themeSelect').addEventListener('change', function () { applyTheme(this.value); });
 
-  /* 顶栏品牌切换：点左上角品牌块打开工具下拉 */
-  var brandBtn = $('brandBtn'), brandMenu = $('brandMenu');
+  /* 顶栏品牌切换：点左上角品牌块打开工具下拉（开关由模板 @click 调，文档级收起在 mounted 里注册） */
+  /* 注意：不能在顶层缓存 brandBtn/brandMenu——Vue 挂载会替换 #app 内的节点，缓存的引用会指向已 detached 的旧节点（qr 页已踩过这个坑）；每次现查 DOM */
   function closeBrand() {
-    brandMenu.hidden = true;
-    brandBtn.setAttribute('aria-expanded', 'false');
+    var menu = $('brandMenu'), btn = $('brandBtn');
+    if (!menu || !btn) return;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
   }
-  brandBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    brandMenu.hidden = !brandMenu.hidden;
-    brandBtn.setAttribute('aria-expanded', String(!brandMenu.hidden));
-  });
-  document.addEventListener('click', function (e) {
-    if (!brandMenu.hidden && !e.target.closest('.brand-wrap')) closeBrand();
-  });
+  function toggleBrand() {
+    var menu = $('brandMenu'), btn = $('brandBtn');
+    if (!menu || !btn) return;
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  }
   /* 干净地址（/qr 等）：已在当前工具时不跳转；本地 file:// 直接打开时补回 .html */
   function goToTool(page) {
     var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
@@ -60,19 +75,16 @@
     try { sessionStorage.setItem('json-wb-nav', '1'); } catch (e) {}
     location.href = target;
   }
-  brandMenu.addEventListener('click', function (e) {
+  function onBrandMenuClick(e) {
     var item = e.target.closest('.brand-item');
     if (!item) return;
     var page = item.getAttribute('data-page');
     closeBrand();
     if (page) goToTool(page);
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeBrand();
-  });
+  }
 
-  /* ---------- 可拖动分隔条（与其它页同款，比例分开存） ---------- */
-  (function initResizer() {
+  /* ---------- 可拖动分隔条（与其它页同款，比例分开存；mounted 里初始化） ---------- */
+  function initResizer() {
     var panes = $('panes'), paneLeft = $('paneLeft'), divider = $('divider');
     var saved = null;
     try { saved = localStorage.getItem('pw-wb-split'); } catch (e) {}
@@ -118,7 +130,7 @@
       divider.addEventListener('pointermove', onMove);
       divider.addEventListener('pointerup', onUp);
     });
-  })();
+  }
 
   /* ---------- 安全随机数（拒绝采样，避免取模偏差） ---------- */
   function randInt(n) {
@@ -141,19 +153,19 @@
 
   function currentOptions() {
     return {
-      mode: $('modeSelect').value,
-      length: Math.min(64, Math.max(8, parseInt($('lengthNum').value, 10) || 16)),
-      upper: $('setUpper').checked,
-      lower: $('setLower').checked,
-      digits: $('setDigits').checked,
-      symbols: $('setSymbols').checked,
-      excludeAmbiguous: $('excludeAmbiguous').checked,
-      mnemonicWords: parseInt($('mnemonicWords').value, 10) || 12,
-      numMin: parseInt($('numMin').value, 10) || 0,
-      numMax: parseInt($('numMax').value, 10) || 0,
-      numCount: Math.min(10, Math.max(1, parseInt($('numCount').value, 10) || 5)),
-      numPad: $('numPad').checked,
-      numPadDigits: Math.min(10, Math.max(1, parseInt($('numPadDigits').value, 10) || 4))
+      mode: state.mode,
+      length: Math.min(64, Math.max(8, parseInt(state.length, 10) || 16)),
+      upper: state.upper,
+      lower: state.lower,
+      digits: state.digits,
+      symbols: state.symbols,
+      excludeAmbiguous: state.excludeAmbiguous,
+      mnemonicWords: parseInt(state.mnemonicWords, 10) || 12,
+      numMin: parseInt(state.numMin, 10) || 0,
+      numMax: parseInt(state.numMax, 10) || 0,
+      numCount: Math.min(10, Math.max(1, parseInt(state.numCount, 10) || 5)),
+      numPad: state.numPad,
+      numPadDigits: Math.min(10, Math.max(1, parseInt(state.numPadDigits, 10) || 4))
     };
   }
 
@@ -168,19 +180,19 @@
       if (!raw) return;
       var o = JSON.parse(raw);
       if (!o) return;
-      if (o.mode) $('modeSelect').value = o.mode;
-      if (o.length) { $('lengthRange').value = o.length; $('lengthNum').value = o.length; $('lengthValue').textContent = o.length; }
-      if (typeof o.upper === 'boolean') $('setUpper').checked = o.upper;
-      if (typeof o.lower === 'boolean') $('setLower').checked = o.lower;
-      if (typeof o.digits === 'boolean') $('setDigits').checked = o.digits;
-      if (typeof o.symbols === 'boolean') $('setSymbols').checked = o.symbols;
-      if (typeof o.excludeAmbiguous === 'boolean') $('excludeAmbiguous').checked = o.excludeAmbiguous;
-      if (o.mnemonicWords) $('mnemonicWords').value = String(o.mnemonicWords);
-      if (typeof o.numMin === 'number') $('numMin').value = o.numMin;
-      if (typeof o.numMax === 'number') $('numMax').value = o.numMax;
-      if (o.numCount) $('numCount').value = o.numCount;
-      if (typeof o.numPad === 'boolean') $('numPad').checked = o.numPad;
-      if (o.numPadDigits) $('numPadDigits').value = o.numPadDigits;
+      if (o.mode) state.mode = o.mode;
+      if (o.length) state.length = Math.min(64, Math.max(8, o.length));
+      if (typeof o.upper === 'boolean') state.upper = o.upper;
+      if (typeof o.lower === 'boolean') state.lower = o.lower;
+      if (typeof o.digits === 'boolean') state.digits = o.digits;
+      if (typeof o.symbols === 'boolean') state.symbols = o.symbols;
+      if (typeof o.excludeAmbiguous === 'boolean') state.excludeAmbiguous = o.excludeAmbiguous;
+      if (o.mnemonicWords) state.mnemonicWords = o.mnemonicWords;
+      if (typeof o.numMin === 'number') state.numMin = o.numMin;
+      if (typeof o.numMax === 'number') state.numMax = o.numMax;
+      if (o.numCount) state.numCount = o.numCount;
+      if (typeof o.numPad === 'boolean') state.numPad = o.numPad;
+      if (o.numPadDigits) state.numPadDigits = o.numPadDigits;
     } catch (e) {}
   }
 
@@ -365,7 +377,7 @@
 
   var checkTimer = null;
   function runChecker() {
-    var pw = $('checkInput').value;
+    var pw = state.checkInput;
     var verdict = $('checkVerdict');
     if (!pw) {
       verdict.textContent = '';
@@ -389,7 +401,7 @@
   var pasteTimer = null;
   var pastedMnemonic = '';
   function runMnemonicPaste() {
-    var raw = $('mnemonicPaste').value;
+    var raw = state.mnemonicPaste;
     var words = raw.toLowerCase().split(/[\s,]+/).filter(function (w) { return w; });
     var grid = $('mnemonicPasteGrid');
     var verdict = $('mnemonicPasteVerdict');
@@ -502,6 +514,9 @@
     var seq = ++genSeq;
     var o = currentOptions();
     if (o.mode === 'random' && !o.upper && !o.lower && !o.digits && !o.symbols) {
+      suppressWatch = true;
+      state.lower = true;
+      suppressWatch = false;
       $('setLower').checked = true;
       saveOptions();
       showToast('至少要选一种字符，已自动勾上小写字母');
@@ -510,6 +525,10 @@
     if (o.mode === 'number') {
       if (o.numMin > o.numMax) {
         var tmp = o.numMin; o.numMin = o.numMax; o.numMax = tmp;
+        suppressWatch = true;
+        state.numMin = o.numMin;
+        state.numMax = o.numMax;
+        suppressWatch = false;
         $('numMin').value = o.numMin;
         $('numMax').value = o.numMax;
         saveOptions();
@@ -629,15 +648,9 @@
     done(ok);
   }
 
-  /* ---------- 控件联动 ---------- */
-  function syncLength() {
-    var v = Math.min(64, Math.max(8, parseInt($('lengthNum').value, 10) || 16));
-    $('lengthRange').value = v;
-    $('lengthNum').value = v;
-    $('lengthValue').textContent = v;
-  }
+  /* ---------- 控件联动（模式切换时的行显隐，仍同步写 DOM） ---------- */
   function updateModeUI() {
-    var mode = $('modeSelect').value;
+    var mode = state.mode;
     $('lengthRow').hidden = mode !== 'random';
     $('charsetRow').hidden = mode !== 'random';
     $('ambRow').hidden = mode !== 'random';
@@ -654,23 +667,21 @@
     $('pwOutput').title = mode === 'number' ? '点一下复制全部数字' : '点一下复制密码';
   }
 
-  $('modeSelect').addEventListener('change', function () { updateModeUI(); saveOptions(); generate(); });
-  $('lengthRange').addEventListener('input', function () { $('lengthNum').value = this.value; $('lengthValue').textContent = this.value; saveOptions(); generate(); });
-  $('lengthNum').addEventListener('change', function () { syncLength(); saveOptions(); generate(); });
-  ['setUpper', 'setLower', 'setDigits', 'setSymbols', 'excludeAmbiguous'].forEach(function (id) {
-    $(id).addEventListener('change', function () { saveOptions(); generate(); });
-  });
-  $('mnemonicWords').addEventListener('change', function () { saveOptions(); generate(); });
-  ['numMin', 'numMax', 'numCount', 'numPadDigits'].forEach(function (id) {
-    $(id).addEventListener('change', function () { saveOptions(); generate(); });
-  });
-  $('numPad').addEventListener('change', function () {
-    $('numPadDigits').disabled = !this.checked;
-    saveOptions(); generate();
-  });
-  $('btnPin4').addEventListener('click', function () { setPin(4); });
-  $('btnPin6').addEventListener('click', function () { setPin(6); });
+  /* ---------- Vue 3 应用 ---------- */
+  /* 控件联动：v-model 写 state，flush:'sync' 的 watcher 同步跑原来的保存 + 生成，
+     所以测试同步读 DOM 时已经是新值。长度在这里钳制（8–64）。 */
+  function onOptionsChange() {
+    if (suppressWatch) return;
+    saveOptions();
+    generate();
+  }
   function setPin(digits) {
+    suppressWatch = true;
+    state.numMin = 0;
+    state.numMax = digits === 4 ? 9999 : 999999;
+    state.numPad = true;
+    state.numPadDigits = digits;
+    suppressWatch = false;
     $('numMin').value = 0;
     $('numMax').value = digits === 4 ? 9999 : 999999;
     $('numPad').checked = true;
@@ -680,34 +691,86 @@
     generate();
     showToast('已设为 ' + digits + ' 位 PIN');
   }
-
-  $('btnGenerate').addEventListener('click', generate);
-  $('btnCopy').addEventListener('click', copyOutput);
-  $('pwOutput').addEventListener('click', copyOutput);
-  $('mnemonicGrid').addEventListener('click', copyOutput);
-  $('mnemonicPaste').addEventListener('input', function () {
-    if (pasteTimer) clearTimeout(pasteTimer);
-    pasteTimer = setTimeout(runMnemonicPaste, 200);
-  });
-  $('mnemonicPasteGrid').addEventListener('click', function () {
+  function copyPasted() {
     if (!pastedMnemonic) return;
     copyMnemonic(pastedMnemonic, function (ok) {
       if (ok) { showToast('已复制助记词'); setStatus('ok', '已复制助记词'); }
       else { showToast('复制失败，请手动选中复制'); setStatus('warn', '复制失败，请手动选中复制'); }
     });
-  });
-
+  }
   /* 检查我的密码：输入即算（200ms 防抖），只在浏览器里算 */
-  $('checkInput').addEventListener('input', function () {
+  function onCheckInput() {
     if (checkTimer) clearTimeout(checkTimer);
     checkTimer = setTimeout(runChecker, 200);
-  });
-  $('btnCheckToggle').addEventListener('click', function () {
+  }
+  function onPasteInput() {
+    if (pasteTimer) clearTimeout(pasteTimer);
+    pasteTimer = setTimeout(runMnemonicPaste, 200);
+  }
+  function toggleCheckVisibility() {
     var input = $('checkInput');
     var show = input.type === 'password';
     input.type = show ? 'text' : 'password';
-    this.textContent = show ? '隐藏' : '显示';
+    $('btnCheckToggle').textContent = show ? '隐藏' : '显示';
+  }
+
+  var app = Vue.createApp({
+    data: function () { return state; },
+    watch: {
+      mode: { handler: function () { if (suppressWatch) return; updateModeUI(); saveOptions(); generate(); }, flush: 'sync' },
+      length: { handler: function () {
+        if (suppressWatch) return;
+        var v = parseInt(state.length, 10);
+        if (isNaN(v)) v = 16;
+        v = Math.min(64, Math.max(8, v));
+        if (v !== state.length) { state.length = v; return; }
+        saveOptions();
+        generate();
+      }, flush: 'sync' },
+      upper: { handler: onOptionsChange, flush: 'sync' },
+      lower: { handler: onOptionsChange, flush: 'sync' },
+      digits: { handler: onOptionsChange, flush: 'sync' },
+      symbols: { handler: onOptionsChange, flush: 'sync' },
+      excludeAmbiguous: { handler: onOptionsChange, flush: 'sync' },
+      mnemonicWords: { handler: onOptionsChange, flush: 'sync' },
+      numMin: { handler: onOptionsChange, flush: 'sync' },
+      numMax: { handler: onOptionsChange, flush: 'sync' },
+      numCount: { handler: onOptionsChange, flush: 'sync' },
+      numPadDigits: { handler: onOptionsChange, flush: 'sync' },
+      numPad: { handler: function () { if (suppressWatch) return; $('numPadDigits').disabled = !state.numPad; saveOptions(); generate(); }, flush: 'sync' },
+      theme: { handler: function (t) { if (suppressWatch) return; applyTheme(t); }, flush: 'sync' }
+    },
+    methods: {
+      generate: generate,
+      copyOutput: copyOutput,
+      copyPasted: copyPasted,
+      setPin: setPin,
+      toggleBrand: toggleBrand,
+      onBrandMenuClick: onBrandMenuClick,
+      onCheckInput: onCheckInput,
+      onPasteInput: onPasteInput,
+      toggleCheckVisibility: toggleCheckVisibility
+    },
+    mounted: function () {
+      document.addEventListener('click', function (e) {
+        if (!$('brandMenu').hidden && !e.target.closest('.brand-wrap')) closeBrand();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeBrand();
+      });
+      initResizer();
+      var theme = 'dark';
+      try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
+      suppressWatch = true;
+      applyTheme(theme);
+      restoreOptions();
+      suppressWatch = false;
+      $('numPadDigits').disabled = !state.numPad;
+      updateModeUI();
+      generate();
+    }
   });
+  app.mount('#app');
 
   /* ---------- 测试钩子 ---------- */
   window.__pw = {
@@ -718,13 +781,4 @@
     bip39WordCount: (typeof BIP39_WORDS !== 'undefined') ? BIP39_WORDS.length : 0,
     bip39HasWord: function (w) { return (typeof BIP39_WORDS !== 'undefined') && BIP39_WORDS.indexOf(w) !== -1; }
   };
-
-  /* ---------- 初始化 ---------- */
-  var theme = 'dark';
-  try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
-  applyTheme(theme);
-  restoreOptions();
-  $('numPadDigits').disabled = !$('numPad').checked;
-  updateModeUI();
-  generate();
 })();

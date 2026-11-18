@@ -2,10 +2,15 @@
    數據全部來自政府公開接口、無需 key、瀏覽器直接請求（CORS: *）：
    - 巴士 · 小巴（合併模式）：輸路線號碼後同時查五個來源——專線小巴 data.etagmb.gov.hk（新界 / 九龍 / 港島）、
      九巴 data.etabus.gov.hk、城巴 rt.data.gov.hk/v2；同一個編號有多條路線時全部列出、點一下自由切換（選方向 -> 選站 -> 看分鐘數）
-   - 港鐵：rt.data.gov.hk/v1/transport/mtr/getSchedule.php（ttnt 欄位就是分鐘數） */
+   - 港鐵：rt.data.gov.hk/v1/transport/mtr/getSchedule.php（ttnt 欄位就是分鐘數）
+   Vue 3 遷移：狀態全部進 Vue 的 reactive，模板用 v-model/@click 綁控件；
+   測試會同步讀的輸出（模式、ETA、站表、候選路線、狀態欄）仍走原來的同步 DOM 寫法，
+   由 flush:'sync' 的 watcher 驅動，不用 {{ }} / v-show / v-for 去渲染它們；
+   動態內容（方向按鈕、站表、候選路線、最近路線）繼續命令式渲染。 */
 (function () {
   'use strict';
 
+  var Vue = window.Vue;
   function $(id) { return document.getElementById(id); }
 
   var toastTimer = null;
@@ -25,27 +30,35 @@
 
   /* ---------- 主題（與其它頁共用 json-wb-theme） ---------- */
   function applyTheme(theme) {
+    state.theme = theme;
     document.documentElement.setAttribute('data-theme', theme);
     var sel = $('themeSelect');
     if (sel) sel.value = theme;
     try { localStorage.setItem('json-wb-theme', theme); } catch (e) {}
   }
-  $('themeSelect').addEventListener('change', function () { applyTheme(this.value); });
+  /* 主題改由模板 v-model="theme" + watcher 接管（見底部 Vue 應用） */
 
-  /* 頂欄品牌切換：點左上角品牌塊打開工具下拉 */
-  var brandBtn = $('brandBtn'), brandMenu = $('brandMenu');
+  /* 頂欄品牌切換：點左上角品牌塊打開工具下拉（開關由模板 @click 調，文檔級收起在 mounted 裡註冊） */
+  /* 注意：不能在頂層緩存 brandBtn/brandMenu——Vue 掛載會替換 #app 內的節點，緩存的引用會指向已 detached 的舊節點（qr 頁已踩過這個坑）；每次現查 DOM */
   function closeBrand() {
-    brandMenu.hidden = true;
-    brandBtn.setAttribute('aria-expanded', 'false');
+    var menu = $('brandMenu'), btn = $('brandBtn');
+    if (!menu || !btn) return;
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
   }
-  brandBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    brandMenu.hidden = !brandMenu.hidden;
-    brandBtn.setAttribute('aria-expanded', String(!brandMenu.hidden));
-  });
-  document.addEventListener('click', function (e) {
-    if (!brandMenu.hidden && !e.target.closest('.brand-wrap')) closeBrand();
-  });
+  function toggleBrand() {
+    var menu = $('brandMenu'), btn = $('brandBtn');
+    if (!menu || !btn) return;
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  }
+  function onBrandMenuClick(e) {
+    var item = e.target.closest('.brand-item');
+    if (!item) return;
+    var page = item.getAttribute('data-page');
+    closeBrand();
+    if (page) goToTool(page);
+  }
   /* 乾淨地址（/qr 等）：已在當前工具時不跳轉；本地 file:// 直接打開時補回 .html */
   function goToTool(page) {
     var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
@@ -60,16 +73,10 @@
     try { sessionStorage.setItem('json-wb-nav', '1'); } catch (e) {}
     location.href = target;
   }
-  brandMenu.addEventListener('click', function (e) {
-    var item = e.target.closest('.brand-item');
-    if (!item) return;
-    var page = item.getAttribute('data-page');
-    closeBrand();
-    if (page) goToTool(page);
-  });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeBrand();
   });
+  /* （品牌菜單的點擊由模板 @click="onBrandMenuClick" 接管；文檔級點空白收起見底部 mounted） */
 
   /* ---------- API ---------- */
   var GMB_API = 'https://data.etagmb.gov.hk';
@@ -81,8 +88,10 @@
   var SRC_LABEL = { 'gmb-NT': '專線小巴 · 新界', 'gmb-KLN': '專線小巴 · 九龍', 'gmb-HKI': '專線小巴 · 港島', kmb: '九巴', ctb: '城巴' };
   var SRC_SHORT = { 'gmb-NT': '小巴·新界', 'gmb-KLN': '小巴·九龍', 'gmb-HKI': '小巴·港島', kmb: '九巴', ctb: '城巴' };
 
-  var state = {
+  /* Vue 狀態：與模板的 v-model 對應；渲染函數直接讀它 */
+  var state = Vue.reactive({
     mode: 'road', loading: false, etaTimer: null,
+    routeInput: '87M', theme: 'dark', autoRefresh: true, stopFilter: '',
     roadKind: '', roadSrc: '', roadCode: '', candidates: [],
     // 小巴
     routeCode: '', region: '', routeId: 0, directions: [], routeSeq: 0,
@@ -91,7 +100,9 @@
     bus: { op: '', code: '', dirs: [], dirKey: '', serviceType: '1', stops: [], stopSeq: 0, stopId: '' },
     // 港鐵
     mtr: { line: 'TWL', sta: 'KWF', dir: 'UP' }
-  };
+  });
+  /* 恢復選項/修正值時臨時關 watcher，避免中間態反覆觸發查詢 */
+  var suppressWatch = false;
 
   function fetchJson(url) {
     var ctrl = new AbortController();
@@ -170,6 +181,7 @@
       b.textContent = e.code + (e.src && SRC_SHORT[e.src] ? ' · ' + SRC_SHORT[e.src] : '');
       b.addEventListener('click', function () {
         $('routeInput').value = e.code;
+        state.routeInput = e.code;
         if (e.src) roadLoadBySrc(e.code, e.src); else roadSearch(e.code, {});
       });
       box.appendChild(b);
@@ -312,6 +324,7 @@
     state.loading = true;
     setStatus('idle', '正在找 ' + code + '…');
     $('routeInput').value = code;
+    state.routeInput = code;
     state.candidates = [];
     var box = $('routeCandidates');
     box.hidden = true;
@@ -775,67 +788,98 @@
   function startAutoRefresh() {
     if (state.etaTimer) clearInterval(state.etaTimer);
     state.etaTimer = null;
-    if (!$('autoRefresh').checked) return;
+    if (!state.autoRefresh) return;
     state.etaTimer = setInterval(function () {
       if (!document.hidden) loadCurrentEta();
     }, 30000);
   }
 
-  /* ---------- 事件 ---------- */
-  document.querySelectorAll('#modeTabs .seg-btn').forEach(function (b) {
-    b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
-  });
-  $('btnSearch').addEventListener('click', function () {
+  /* ---------- 事件（模板 @click / v-model 接管；watcher 見底部 Vue 應用） ---------- */
+  /* 查路線按鈕讀 DOM 的輸入框值：測試是直接改 input.value 再點按鈕（不派發 input 事件），
+     讀 state 會拿到舊值；讀到後同步回 state，兩邊保持一致 */
+  function onSearch() {
     if (state.mode !== 'mtr') roadSearch($('routeInput').value, {});
-  });
-  $('routeInput').addEventListener('keydown', function (e) {
+  }
+  function onRouteKeydown(e) {
     if (e.key === 'Enter' && state.mode !== 'mtr') {
       roadSearch($('routeInput').value, {});
     }
-  });
-  $('btnRefresh').addEventListener('click', function () { loadCurrentEta(); });
-  $('btnRefreshMtr').addEventListener('click', function () { mtrLoadEta(); });
-  $('autoRefresh').addEventListener('change', function () { startAutoRefresh(); });
-  $('stopFilter').addEventListener('input', function () {
-    if (state.roadKind === 'bus') renderStops(state.bus.stops, state.bus.stopSeq, busSetStop);
-    else renderStops(state.stops, state.stopSeq, setStop);
-  });
-  $('stopSelect').addEventListener('change', function () {
-    if (state.roadKind === 'bus') busSetStop(Number(this.value)); else setStop(Number(this.value));
-  });
-  $('lineSelect').addEventListener('change', function () {
-    state.mtr.line = this.value;
-    state.mtr.dir = 'UP';
-    mtrRenderStations();
-    mtrLoadEta();
-  });
-  $('stationSelect').addEventListener('change', function () {
-    state.mtr.sta = this.value;
-    mtrLoadEta();
-  });
-
-  /* ---------- 啟動 ---------- */
-  try { applyTheme(localStorage.getItem('json-wb-theme') || 'dark'); } catch (e) {}
-  renderRecent();
-  startAutoRefresh();
-
-  var params = new URLSearchParams(location.search);
-  var initMode = params.get('mode') || 'road';
-  if (initMode === 'mtr') {
-    state.mtr.line = params.get('line') || 'TWL';
-    state.mtr.sta = params.get('sta') || 'KWF';
-    state.mtr.dir = params.get('dir') || 'UP';
-    setMode('mtr', { sta: state.mtr.sta });
-  } else {
-    // mode=gmb / mode=bus 都是舊地址，統一併入 road
-    var initRoute = (params.get('route') || '87M').trim().toUpperCase();
-    var initDir = Number(params.get('dir') || '') || undefined;
-    var initStop = Number(params.get('stop') || '') || undefined;
-    // 預設就是 87M 四號碼頭出發：方向 2、站 1（不用再輸一次）
-    if (!params.get('route') && !params.get('dir') && !params.get('stop')) {
-      initDir = 2; initStop = 1;
-    }
-    $('routeInput').value = initRoute;
-    roadSearch(initRoute, { dir: initDir, stop: initStop, src: params.get('src') || '' });
   }
+
+  /* ---------- Vue 3 應用 ---------- */
+  /* 控件用 v-model 寫 state；測試會同步讀的輸出仍走原來的同步 DOM 寫法，
+     由 flush:'sync' 的 watcher 驅動。方向按鈕、站表、候選路線、最近路線繼續命令式渲染，不用 v-for。 */
+  var app = Vue.createApp({
+    data: function () { return state; },
+    computed: {
+      /* 上車站下拉：小巴與巴士各用自己的 stopSeq，模板用一個 v-model 綁這個計算屬性 */
+      stopSeqModel: {
+        get: function () { return state.roadKind === 'bus' ? state.bus.stopSeq : state.stopSeq; },
+        set: function (v) {
+          var seq = Number(v);
+          if (!seq) return;
+          if (state.roadKind === 'bus') busSetStop(seq); else setStop(seq);
+        }
+      }
+    },
+    watch: {
+      theme: { handler: function (t) { if (suppressWatch) return; applyTheme(t); }, flush: 'sync' },
+      autoRefresh: { handler: function () { if (suppressWatch) return; startAutoRefresh(); }, flush: 'sync' },
+      stopFilter: { handler: function () {
+        if (suppressWatch) return;
+        if (state.roadKind === 'bus') renderStops(state.bus.stops, state.bus.stopSeq, busSetStop);
+        else renderStops(state.stops, state.stopSeq, setStop);
+      }, flush: 'sync' },
+      'mtr.line': { handler: function () {
+        if (suppressWatch) return;
+        state.mtr.dir = 'UP';
+        mtrRenderStations();
+        mtrLoadEta();
+      }, flush: 'sync' },
+      'mtr.sta': { handler: function () { if (suppressWatch) return; mtrLoadEta(); }, flush: 'sync' }
+    },
+    methods: {
+      setMode: setMode,
+      onSearch: onSearch,
+      onRouteKeydown: onRouteKeydown,
+      loadCurrentEta: loadCurrentEta,
+      mtrLoadEta: mtrLoadEta,
+      toggleBrand: toggleBrand,
+      onBrandMenuClick: onBrandMenuClick
+    },
+    mounted: function () {
+      document.addEventListener('click', function (e) {
+        if (!$('brandMenu').hidden && !e.target.closest('.brand-wrap')) closeBrand();
+      });
+      /* ---------- 啟動 ---------- */
+      suppressWatch = true;
+      try { applyTheme(localStorage.getItem('json-wb-theme') || 'dark'); } catch (e) {}
+      renderRecent();
+      startAutoRefresh();
+
+      var params = new URLSearchParams(location.search);
+      var initMode = params.get('mode') || 'road';
+      if (initMode === 'mtr') {
+        state.mtr.line = params.get('line') || 'TWL';
+        state.mtr.sta = params.get('sta') || 'KWF';
+        state.mtr.dir = params.get('dir') || 'UP';
+        suppressWatch = false;
+        setMode('mtr', { sta: state.mtr.sta });
+      } else {
+        // mode=gmb / mode=bus 都是舊地址，統一併入 road
+        var initRoute = (params.get('route') || '87M').trim().toUpperCase();
+        var initDir = Number(params.get('dir') || '') || undefined;
+        var initStop = Number(params.get('stop') || '') || undefined;
+        // 預設就是 87M 四號碼頭出發：方向 2、站 1（不用再輸一次）
+        if (!params.get('route') && !params.get('dir') && !params.get('stop')) {
+          initDir = 2; initStop = 1;
+        }
+        $('routeInput').value = initRoute;
+        state.routeInput = initRoute;
+        suppressWatch = false;
+        roadSearch(initRoute, { dir: initDir, stop: initStop, src: params.get('src') || '' });
+      }
+    }
+  });
+  app.mount('#app');
 })();

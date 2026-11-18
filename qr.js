@@ -1,9 +1,33 @@
 /* 二维码 / 条码生成器：bwip-js（本地 vendor）渲染到 canvas。
-   纯静态零后端；格式、纠错级别、颜色都在本页改，生成即所见。 */
+   纯静态零后端；格式、纠错级别、颜色都在本页改，生成即所见。
+   Vue 3 迁移：状态全部进 Vue 的 reactive，模板用 v-model/@click 绑控件；
+   渲染仍走原来的同步 DOM 写法（render / renderGs1Table / renderQrHistory 等），
+   由 flush:'sync' 的 watcher 驱动——测试是同步读 DOM 的，Vue 的异步渲染会让它们读到旧值，
+   所以输出一律同步写 DOM，不用 {{ }} / v-show / v-for。
+   GS1 参数表、历史列表继续用原来的命令式创建（createElement + 逐行监听）。
+   gs1TemplateInput / gs1NewAi / gs1NewValue 不进 v-model：测试是直接改 .value 后点按钮，
+   处理函数直接读 DOM，v-model 反而会读不到。 */
 (function () {
   'use strict';
 
+  var Vue = window.Vue;
   function $(id) { return document.getElementById(id); }
+
+  /* 大小档记住上次选择，不再默认中号（恢复在 state 初始化时做，Vue 挂载后同步到下拉框） */
+  var SIZE_KEY = 'qr-wb-size';
+  var savedSize = 'medium';
+  try {
+    var _ss = localStorage.getItem(SIZE_KEY);
+    if (_ss === 'small' || _ss === 'medium' || _ss === 'large') savedSize = _ss;
+  } catch (e) {}
+
+  /* Vue 状态：与模板的 v-model 对应；渲染函数直接读它 */
+  var state = Vue.reactive({
+    theme: 'dark', format: 'qrcode', text: '', scale: savedSize,
+    ec: 'M', showText: true, fgColor: '#000000', bgColor: '#ffffff'
+  });
+  /* 恢复选项/修正值时临时关 watcher，避免中间态反复触发 render */
+  var suppressWatch = false;
 
   var toastTimer = null;
   function showToast(msg) {
@@ -20,29 +44,26 @@
     $('statusText').textContent = msg;
   }
 
-  /* ---------- 主题（与格式化页共用 json-wb-theme） ---------- */
+  /* ---------- 主题（与其它页共用 json-wb-theme） ---------- */
   function applyTheme(theme) {
+    state.theme = theme;
     document.documentElement.setAttribute('data-theme', theme);
     var sel = $('themeSelect');
     if (sel) sel.value = theme;
     try { localStorage.setItem('json-wb-theme', theme); } catch (e) {}
   }
-  $('themeSelect').addEventListener('change', function () { applyTheme(this.value); });
 
-  /* 顶栏品牌切换：点左上角品牌块打开工具下拉 */
-  var brandBtn = $('brandBtn'), brandMenu = $('brandMenu');
+  /* 顶栏品牌切换：点左上角品牌块打开工具下拉（开关由模板 @click 调，文档级收起在 mounted 里注册）。
+     注意：每次现查 DOM，不要缓存引用——Vue 挂载时可能替换节点，缓存的引用会指向已 detached 的旧节点 */
   function closeBrand() {
-    brandMenu.hidden = true;
-    brandBtn.setAttribute('aria-expanded', 'false');
+    $('brandMenu').hidden = true;
+    $('brandBtn').setAttribute('aria-expanded', 'false');
   }
-  brandBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    brandMenu.hidden = !brandMenu.hidden;
-    brandBtn.setAttribute('aria-expanded', String(!brandMenu.hidden));
-  });
-  document.addEventListener('click', function (e) {
-    if (!brandMenu.hidden && !e.target.closest('.brand-wrap')) closeBrand();
-  });
+  function toggleBrand() {
+    var menu = $('brandMenu');
+    menu.hidden = !menu.hidden;
+    $('brandBtn').setAttribute('aria-expanded', String(!menu.hidden));
+  }
   /* 干净地址（/qr 等）：已在当前工具时不跳转；本地 file:// 直接打开时补回 .html */
   function goToTool(page) {
     var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
@@ -57,19 +78,16 @@
     try { sessionStorage.setItem('json-wb-nav', '1'); } catch (e) {}
     location.href = target;
   }
-  brandMenu.addEventListener('click', function (e) {
+  function onBrandMenuClick(e) {
     var item = e.target.closest('.brand-item');
     if (!item) return;
     var page = item.getAttribute('data-page');
     closeBrand();
     if (page) goToTool(page);
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeBrand();
-  });
+  }
 
-  /* ---------- 可拖动分隔条（与格式化页同款，比例分开存） ---------- */
-  (function initResizer() {
+  /* ---------- 可拖动分隔条（与其它页同款，比例分开存；mounted 里初始化） ---------- */
+  function initResizer() {
     var panes = $('panes'), paneLeft = $('paneLeft'), divider = $('divider');
     var saved = null;
     try { saved = localStorage.getItem('qr-wb-split'); } catch (e) {}
@@ -115,10 +133,10 @@
       divider.addEventListener('pointermove', onMove);
       divider.addEventListener('pointerup', onUp);
     });
-  })();
+  }
 
   /* ---------- GS1 参数区横向分隔条：上下拖动，调整输入框与参数区的高度占比 ---------- */
-  (function initGs1Divider() {
+  function initGs1Divider() {
     var paneLeft = $('paneLeft'), panel = $('gs1Panel'), div = $('gs1Divider');
     var KEY = 'qr-wb-gs1-split';
     var ratio = null;
@@ -148,7 +166,7 @@
       div.addEventListener('pointermove', onMove);
       div.addEventListener('pointerup', onUp);
     });
-  })();
+  }
 
   /* ---------- 各类型说明、示例 ---------- */
   var FORMATS = {
@@ -164,32 +182,25 @@
     large: { qr: 400, barcodeScale: 6 }
   };
 
-  /* 大小档记住上次选择，不再默认中号 */
-  var SIZE_KEY = 'qr-wb-size';
-  try {
-    var savedSize = localStorage.getItem(SIZE_KEY);
-    if (savedSize && SIZE_MAP[savedSize]) $('scaleSelect').value = savedSize;
-  } catch (e) {}
-
-  function currentFormat() { return $('formatSelect').value; }
+  function currentFormat() { return state.format; }
   function hexNoHash(v) { return v.replace('#', ''); }
 
   function buildOpts() {
     var fmt = currentFormat();
-    var size = SIZE_MAP[$('scaleSelect').value] || SIZE_MAP.medium;
+    var size = SIZE_MAP[state.scale] || SIZE_MAP.medium;
     var opts = {
       bcid: fmt,
-      text: $('qrInput').value,
-      backgroundcolor: hexNoHash($('bgColor').value),
-      barcolor: hexNoHash($('fgColor').value),
-      textcolor: hexNoHash($('fgColor').value)
+      text: state.text,
+      backgroundcolor: hexNoHash(state.bgColor),
+      barcolor: hexNoHash(state.fgColor),
+      textcolor: hexNoHash(state.fgColor)
     };
     if (FORMATS[fmt].oneDim) {
       opts.height = 10;
-      opts.includetext = $('showText').checked;
+      opts.includetext = state.showText;
       opts.scale = size.barcodeScale;
     }
-    if (fmt === 'qrcode') opts.eclevel = $('ecSelect').value;
+    if (fmt === 'qrcode') opts.eclevel = state.ec;
     return opts;
   }
 
@@ -226,7 +237,7 @@
   }
 
   function render() {
-    var text = $('qrInput').value;
+    var text = state.text;
     var canvas = $('qrCanvas');
     if (!text.trim()) {
       canvas.hidden = true;
@@ -239,7 +250,7 @@
       var fmt = currentFormat();
       var target = 0, modules = 0;
       if (fmt === 'qrcode') {
-        target = (SIZE_MAP[$('scaleSelect').value] || SIZE_MAP.medium).qr;
+        target = (SIZE_MAP[state.scale] || SIZE_MAP.medium).qr;
         modules = renderQrExact(canvas, buildOpts(), target);
       } else {
         bwipjs.toCanvas(canvas, buildOpts());
@@ -266,6 +277,19 @@
     $('formatHint').textContent = FORMATS[fmt].hint;
     $('ecWrap').style.display = fmt === 'qrcode' ? '' : 'none';
     $('textWrap').style.display = FORMATS[fmt].oneDim ? '' : 'none';
+  }
+
+  /* 输入框内容变化时同步更新字符数（v-model 的 watcher 里调；程序改值时也调） */
+  function updateInputStats() {
+    $('inputStats').textContent = state.text.length + ' 字符';
+  }
+  /* 程序改输入框：同时写 state（suppressWatch 防 watcher 重入）和 DOM，并同步更新字符数 */
+  function setText(v) {
+    suppressWatch = true;
+    state.text = v;
+    suppressWatch = false;
+    $('qrInput').value = v;
+    updateInputStats();
   }
 
   /* ---------- GS1 参数表（Postman Params 风格） ----------
@@ -435,7 +459,7 @@
 
   function updateGs1Panel() {
     if (gs1FromTable) return;
-    var text = $('qrInput').value;
+    var text = state.text;
     if (gs1DismissedText === text) { $('gs1Panel').hidden = true; $('gs1Divider').hidden = true; return; }
     gs1Data = parseGs1(text);
     renderGs1Table();
@@ -444,8 +468,7 @@
   function gs1TableChanged() {
     var text = rebuildGs1(gs1Data);
     gs1FromTable = true;
-    $('qrInput').value = text;
-    $('inputStats').textContent = text.length + ' 字符';
+    setText(text);
     renderGs1Table();
     render();
     gs1FromTable = false;
@@ -462,24 +485,6 @@
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
-
-  /* ---------- 事件 ---------- */
-  var debounceTimer = null;
-  $('qrInput').addEventListener('input', function () {
-    $('inputStats').textContent = this.value.length + ' 字符';
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(function () { render(); updateGs1Panel(); }, 300);
-  });
-
-  $('formatSelect').addEventListener('change', function () { updateFormatUI(); render(); });
-  $('scaleSelect').addEventListener('change', function () {
-    try { localStorage.setItem(SIZE_KEY, this.value); } catch (e) {}
-    render();
-  });
-  $('ecSelect').addEventListener('change', render);
-  $('showText').addEventListener('change', render);
-  $('fgColor').addEventListener('input', render);
-  $('bgColor').addEventListener('input', render);
 
   /* ---------- 生成历史：只记文本，点一条重新生成（本机保存，最多 5 条，7 天过期） ---------- */
   var QR_HISTORY_KEY = 'qr-wb-qr-history';
@@ -512,8 +517,7 @@
       btn.title = it.v + '（点击重新生成）';
       btn.textContent = it.v;
       btn.addEventListener('click', function () {
-        $('qrInput').value = it.v;
-        $('inputStats').textContent = it.v.length + ' 字符';
+        setText(it.v);
         gs1DismissedText = null;
         render();
         updateGs1Panel();
@@ -531,55 +535,53 @@
       renderQrHistory();
     } catch (e) {}
   }
-  $('btnQrHistoryClear').addEventListener('click', function () {
+  function clearQrHistory() {
     try { localStorage.removeItem(QR_HISTORY_KEY); } catch (e) {}
     renderQrHistory();
     showToast('生成历史已清空');
-  });
+  }
 
-  $('btnGenerate').addEventListener('click', function () { render(); updateGs1Panel(); saveQrHistory($('qrInput').value); });
+  /* ---------- 按钮动作（模板 @click 调） ---------- */
+  function doGenerate() { render(); updateGs1Panel(); saveQrHistory(state.text); }
 
-  $('btnSample').addEventListener('click', function () {
+  function loadSample() {
     var fmt = currentFormat();
-    $('qrInput').value = FORMATS[fmt].sample;
-    $('inputStats').textContent = FORMATS[fmt].sample.length + ' 字符';
+    setText(FORMATS[fmt].sample);
     render();
     updateGs1Panel();
     saveQrHistory(FORMATS[fmt].sample);
     $('qrInput').focus();
-  });
+  }
 
-  $('btnClear').addEventListener('click', function () {
-    $('qrInput').value = '';
-    $('inputStats').textContent = '0 字符';
+  function clearInput() {
+    setText('');
     render();
     updateGs1Panel();
     $('qrInput').focus();
-  });
+  }
 
-  $('btnGs1Close').addEventListener('click', function () {
-    gs1DismissedText = $('qrInput').value;
+  function closeGs1() {
+    gs1DismissedText = state.text;
     $('gs1Panel').hidden = true;
     $('gs1Divider').hidden = true;
-  });
+  }
 
-  $('btnGs1ResetNames').addEventListener('click', function () {
+  function resetGs1Names() {
     try { localStorage.removeItem(GS1_NAMES_KEY); } catch (e) {}
     renderGs1Table();
     showToast('AI 显示名称已恢复默认');
-  });
+  }
 
   /* GS1 示例：用一组真实参数载入示例链接，参数表与二维码一起生成，方便测试 */
   var GS1_SAMPLE = 'https://example.com/01/09506000134352/10/LOT2026A/21/SN100001?17=261231&30=12';
-  $('btnGs1Sample').addEventListener('click', function () {
-    $('qrInput').value = GS1_SAMPLE;
-    $('inputStats').textContent = GS1_SAMPLE.length + ' 字符';
+  function loadGs1Sample() {
+    setText(GS1_SAMPLE);
     gs1DismissedText = null;
     render();
     updateGs1Panel();
     saveQrHistory(GS1_SAMPLE);
     $('qrInput').focus();
-  });
+  }
 
   /* 导入模板 URL：粘贴一条 GS1 链接当模板，载入输入框并解析参数；模板存在本机，下次打开还在导入框里 */
   var GS1_TEMPLATE_KEY = 'qr-wb-gs1-template';
@@ -587,20 +589,19 @@
     var savedTpl = localStorage.getItem(GS1_TEMPLATE_KEY);
     if (savedTpl) $('gs1TemplateInput').value = savedTpl;
   } catch (e) {}
-  $('btnGs1Import').addEventListener('click', function () {
+  function importGs1Template() {
     var url = $('gs1TemplateInput').value.trim();
     if (!url) { showToast('先在导入框里粘贴一条模板 URL'); return; }
     try { localStorage.setItem(GS1_TEMPLATE_KEY, url); } catch (e) {}
-    $('qrInput').value = url;
-    $('inputStats').textContent = url.length + ' 字符';
+    setText(url);
     gs1DismissedText = null;
     render();
     updateGs1Panel();
     saveQrHistory(url);
     $('qrInput').focus();
-  });
+  }
 
-  $('btnGs1Add').addEventListener('click', function () {
+  function addGs1Param() {
     var ai = $('gs1NewAi').value.trim();
     var value = $('gs1NewValue').value;
     if (!ai) { showToast('先填 AI 代码，如 10'); return; }
@@ -610,9 +611,9 @@
     $('gs1NewAi').value = '';
     $('gs1NewValue').value = '';
     gs1TableChanged();
-  });
+  }
 
-  $('btnDownloadPng').addEventListener('click', function () {
+  function downloadPng() {
     var canvas = $('qrCanvas');
     if (canvas.hidden) { showToast('没有可下载的内容，先生成一个'); return; }
     canvas.toBlob(function (blob) {
@@ -620,14 +621,14 @@
       downloadBlob(blob, fileName('png'));
       showToast('已下载 ' + fileName('png'));
     }, 'image/png');
-  });
+  }
 
-  $('btnDownloadSvg').addEventListener('click', function () {
+  function downloadSvg() {
     if ($('qrCanvas').hidden) { showToast('没有可下载的内容，先生成一个'); return; }
     try {
       var svg;
       if (currentFormat() === 'qrcode') {
-        var target = (SIZE_MAP[$('scaleSelect').value] || SIZE_MAP.medium).qr;
+        var target = (SIZE_MAP[state.scale] || SIZE_MAP.medium).qr;
         svg = qrSvgExact(buildOpts(), target);
       } else {
         svg = bwipjs.toSVG(buildOpts());
@@ -637,9 +638,9 @@
     } catch (e) {
       showToast(friendlyError(e));
     }
-  });
+  }
 
-  $('btnCopyImage').addEventListener('click', function () {
+  function copyImage() {
     var canvas = $('qrCanvas');
     if (canvas.hidden) { showToast('没有可复制的内容，先生成一个'); return; }
     if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
@@ -653,12 +654,67 @@
         function () { showToast('复制失败，改用下载 PNG'); }
       );
     }, 'image/png');
-  });
+  }
 
-  /* ---------- 初始化 ---------- */
-  var theme = 'dark';
-  try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
-  applyTheme(theme);
-  updateFormatUI();
-  renderQrHistory();
+  /* ---------- Vue 3 应用 ---------- */
+  /* 控件联动：v-model 写 state，flush:'sync' 的 watcher 同步跑原来的保存 + 生成，
+     所以测试同步读 DOM 时已经是新值。输入框改动时立即同步生成（取代原来的 300ms 防抖，
+     生成是同步的，测试点「生成」前也已是最新状态）。 */
+  var app = Vue.createApp({
+    data: function () { return state; },
+    watch: {
+      theme: { handler: function (t) { if (suppressWatch) return; applyTheme(t); }, flush: 'sync' },
+      format: { handler: function () { if (suppressWatch) return; updateFormatUI(); render(); }, flush: 'sync' },
+      text: { handler: function () {
+        if (suppressWatch) return;
+        updateInputStats();
+        render();
+        updateGs1Panel();
+      }, flush: 'sync' },
+      scale: { handler: function () {
+        if (suppressWatch) return;
+        try { localStorage.setItem(SIZE_KEY, state.scale); } catch (e) {}
+        render();
+      }, flush: 'sync' },
+      ec: { handler: function () { if (suppressWatch) return; render(); }, flush: 'sync' },
+      showText: { handler: function () { if (suppressWatch) return; render(); }, flush: 'sync' },
+      fgColor: { handler: function () { if (suppressWatch) return; render(); }, flush: 'sync' },
+      bgColor: { handler: function () { if (suppressWatch) return; render(); }, flush: 'sync' }
+    },
+    methods: {
+      generate: doGenerate,
+      render: render,
+      loadSample: loadSample,
+      loadGs1Sample: loadGs1Sample,
+      clearInput: clearInput,
+      closeGs1: closeGs1,
+      resetGs1Names: resetGs1Names,
+      importGs1Template: importGs1Template,
+      addGs1Param: addGs1Param,
+      clearQrHistory: clearQrHistory,
+      downloadPng: downloadPng,
+      downloadSvg: downloadSvg,
+      copyImage: copyImage,
+      toggleBrand: toggleBrand,
+      onBrandMenuClick: onBrandMenuClick
+    },
+    mounted: function () {
+      document.addEventListener('click', function (e) {
+        if (!$('brandMenu').hidden && !e.target.closest('.brand-wrap')) closeBrand();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeBrand();
+      });
+      initResizer();
+      initGs1Divider();
+      var theme = 'dark';
+      try { theme = localStorage.getItem('json-wb-theme') || 'dark'; } catch (e) {}
+      suppressWatch = true;
+      applyTheme(theme);
+      suppressWatch = false;
+      updateFormatUI();
+      renderQrHistory();
+    }
+  });
+  app.mount('#app');
 })();

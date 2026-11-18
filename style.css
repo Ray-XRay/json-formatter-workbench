@@ -25,6 +25,9 @@
 
 html, body { height: 100%; }
 
+/* Vue 3 挂载根：display:contents 让它在布局里不存在，四页共用 */
+#app { display: contents; }
+
 body {
   margin: 0;
   background: var(--bg);

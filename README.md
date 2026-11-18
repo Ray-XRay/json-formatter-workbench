@@ -1,6 +1,6 @@
 # Code 格式化工作台
 
-一个纯前端的多语言代码格式化工具，零依赖、零后端，打开即用。SQL 解析器 sql-formatter 15.9.0 已本地 vendor（`sql-formatter.min.js`），无需联网加载。
+一个纯前端的多语言代码格式化工具，零依赖、零后端，打开即用。v1.15.0 起用 Vue 3.5.45 重构（global 生产构建本地 vendor `vue.global.prod.js`，不走 CDN、不加构建步骤）。SQL 解析器 sql-formatter 15.9.0 已本地 vendor（`sql-formatter.min.js`），无需联网加载。
 
 支持 **JSON、SQL、Python、Go、Java** 五种语言：工具栏选语言，或保持「自动检测」，粘贴代码后自动识别。
 

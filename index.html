@@ -24,10 +24,11 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="app">
 <header class="topbar">
   <div class="brand-wrap">
     <h1 class="brand-title-wrap">
-      <button class="brand" id="brandBtn" aria-haspopup="true" aria-expanded="false" title="切换工具">
+      <button class="brand" id="brandBtn" aria-haspopup="true" aria-expanded="false" title="切换工具" @click.stop="toggleBrand">
         <span class="logo">&lt;/&gt;</span>
         <span class="brand-text">
           <span class="brand-title">Code 格式化工作台</span>
@@ -36,7 +37,7 @@
         <span class="brand-chev">▾</span>
       </button>
     </h1>
-    <div class="brand-menu" id="brandMenu" hidden>
+    <div class="brand-menu" id="brandMenu" hidden @click="onBrandMenuClick">
       <button class="brand-item active" data-page="/">
         <span class="logo small">&lt;/&gt;</span>
         <span class="brand-item-text"><strong>Code 格式化</strong><em>粘贴 · 格式化 · 验证 · 多语言</em></span>
@@ -58,7 +59,7 @@
   </div>
   <div class="top-actions">
     <label class="theme-label">主题
-      <select id="themeSelect">
+      <select id="themeSelect" v-model="theme">
         <option value="dark" selected>深色</option>
         <option value="light">浅色</option>
         <option value="retro">复古</option>
@@ -74,7 +75,7 @@
 <section class="toolbar">
   <div class="group">
     <label>语言
-      <select id="langSelect">
+      <select id="langSelect" v-model="langMode">
         <option value="auto" selected>自动检测</option>
         <option value="json">JSON</option>
         <option value="sql">SQL</option>
@@ -83,18 +84,18 @@
         <option value="java">Java</option>
       </select>
     </label>
-    <button class="btn primary" id="btnFormat">格式化</button>
-    <button class="btn" id="btnMinify">压缩</button>
+    <button class="btn primary" id="btnFormat" @click="doFormat">格式化</button>
+    <button class="btn" id="btnMinify" @click="doMinify">压缩</button>
   </div>
   <div class="group">
     <div class="more-wrap">
-      <button class="btn" id="btnMore" aria-expanded="false" title="更多工具：验证、修复、缩进、JSONPath、复制 Markdown、下载、生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
+      <button class="btn" id="btnMore" @click.stop="toggleMore" aria-expanded="false" title="更多工具：验证、修复、缩进、JSONPath、复制 Markdown、下载、生成类型、转 YAML、对比、转义、分享、历史">更多工具 ▾</button>
       <div class="more-menu" id="moreMenu" hidden>
-        <button class="menu-item" id="btnValidate">验证</button>
-        <button class="menu-item" id="btnRepair" title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释">修复 JSON</button>
+        <button class="menu-item" id="btnValidate" @click="doValidate">验证</button>
+        <button class="menu-item" id="btnRepair" title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释" @click="doRepair">修复 JSON</button>
         <div class="menu-row">
           <span class="menu-label">缩进</span>
-          <select id="indentSelect">
+          <select id="indentSelect" v-model="indent">
             <option value="2" selected>2 空格</option>
             <option value="4">4 空格</option>
             <option value="tab">Tab</option>
@@ -102,34 +103,34 @@
         </div>
         <label class="menu-row check" id="sortKeysWrap"><input type="checkbox" id="sortKeys"> 按键名排序</label>
         <label class="menu-row check"><input type="checkbox" id="formatOnPaste" checked> 粘贴后自动格式化</label>
-        <button class="menu-item" id="btnJpToggle" title="展开 JSONPath 查询栏">JSONPath 查询</button>
-        <button class="menu-item" id="btnCopyMarkdown" title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色">复制 Markdown</button>
-        <button class="menu-item" id="btnDownload">下载</button>
+        <button class="menu-item" id="btnJpToggle" title="展开 JSONPath 查询栏" @click="toggleJpBar">JSONPath 查询</button>
+        <button class="menu-item" id="btnCopyMarkdown" title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色" @click="copyMarkdown">复制 Markdown</button>
+        <button class="menu-item" id="btnDownload" @click="downloadJson">下载</button>
         <div class="menu-sep"></div>
         <div class="menu-row" id="typeRow">
           <span class="menu-label">生成类型</span>
-          <select id="typeLang">
+          <select id="typeLang" v-model="typeLang">
             <option value="ts" selected>TypeScript</option>
             <option value="go">Go</option>
             <option value="py">Python</option>
           </select>
-          <button class="btn small" id="btnGenType" title="根据当前 JSON 生成所选语言的类型定义">生成</button>
+          <button class="btn small" id="btnGenType" title="根据当前 JSON 生成所选语言的类型定义" @click="genType">生成</button>
         </div>
-        <button class="menu-item" id="btnYaml" title="把当前 JSON 转成 YAML">转 YAML</button>
-        <button class="menu-item" id="btnDiff" title="与第二份 JSON 逐行对比差异">对比 JSON</button>
-        <button class="menu-item" id="btnEscape" title="把输入转成 JSON 转义字符串">转义</button>
-        <button class="menu-item" id="btnUnescape" title="把 JSON 转义字符串还原">去转义</button>
-        <button class="menu-item" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据">分享链接</button>
-        <button class="menu-item" id="btnShortcuts" title="查看与修改全部快捷键">快捷键设置</button>
+        <button class="menu-item" id="btnYaml" title="把当前 JSON 转成 YAML" @click="doYaml">转 YAML</button>
+        <button class="menu-item" id="btnDiff" title="与第二份 JSON 逐行对比差异" @click="openDiffPanel">对比 JSON</button>
+        <button class="menu-item" id="btnEscape" title="把输入转成 JSON 转义字符串" @click="doEscape">转义</button>
+        <button class="menu-item" id="btnUnescape" title="把 JSON 转义字符串还原" @click="doUnescape">去转义</button>
+        <button class="menu-item" id="btnShare" title="把当前 JSON 编进链接，复制后发给别人打开即是这份数据" @click="doShare">分享链接</button>
+        <button class="menu-item" id="btnShortcuts" title="查看与修改全部快捷键" @click="openShortcuts">快捷键设置</button>
         <div class="menu-row">
           <span class="menu-label">历史</span>
           <select id="historySelect">
             <option value="">最近的输入…</option>
           </select>
-          <button class="btn small" id="btnClearHistory" title="删掉全部历史记录">清空</button>
+          <button class="btn small" id="btnClearHistory" title="删掉全部历史记录" @click="clearHistory">清空</button>
         </div>
         <div class="menu-sep"></div>
-        <label class="menu-row check"><input type="checkbox" id="rememberDraft" checked> 记住输入草稿与历史</label>
+        <label class="menu-row check"><input type="checkbox" id="rememberDraft" checked v-model="remember"> 记住输入草稿与历史</label>
         <div class="menu-hint">草稿与历史仅保存在本机浏览器，7 天后过期；关闭后立即删除已存内容。</div>
       </div>
     </div>
@@ -137,18 +138,18 @@
   <span class="spacer"></span>
   <div class="group">
     <div class="seg" id="viewSeg" role="tablist" aria-label="输出视图">
-      <button class="seg-btn active" id="viewCode" role="tab">代码</button>
-      <button class="seg-btn" id="viewTree" role="tab">树形</button>
+      <button class="seg-btn active" id="viewCode" role="tab" @click="setView('code')">代码</button>
+      <button class="seg-btn" id="viewTree" role="tab" @click="onViewTree">树形</button>
     </div>
-    <button class="btn" id="btnCopy">复制结果</button>
+    <button class="btn" id="btnCopy" @click="copyFormatted">复制结果</button>
   </div>
 </section>
 
 <section class="toolbar secondary" id="jpBar" hidden>
   <div class="group jp-group">
     <label class="jp-label" for="jsonpathInput">JSONPath</label>
-    <input type="text" id="jsonpathInput" placeholder="$.store.book[0].title 或 $..price" spellcheck="false">
-    <button class="btn" id="btnJsonPath">查询</button>
+    <input type="text" id="jsonpathInput" placeholder="$.store.book[0].title 或 $..price" spellcheck="false" v-model="jsonpathInput">
+    <button class="btn" id="btnJsonPath" @click="doJsonPath">查询</button>
     <span class="hint" id="jsonpathCount"></span>
   </div>
 </section>
@@ -156,7 +157,7 @@
 <section class="jp-results" id="jpResults" hidden>
   <div class="jp-results-head">
     <span>查询结果 <span class="hint" id="jpResultsCount"></span></span>
-    <button class="btn ghost small" id="btnJpClose">关闭</button>
+    <button class="btn ghost small" id="btnJpClose" @click="closeJpResults">关闭</button>
   </div>
   <div class="jp-results-body" id="jpResultsBody"></div>
 </section>
@@ -165,11 +166,11 @@
   <div class="diff-panel-head">
     <span>对比 JSON</span>
     <span class="hint">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
-    <button class="btn ghost small" id="btnDiffClose">关闭</button>
+    <button class="btn ghost small" id="btnDiffClose" @click="closeDiffPanel">关闭</button>
   </div>
-  <textarea id="diffInput" placeholder="粘贴第二份 JSON…" spellcheck="false"></textarea>
+  <textarea id="diffInput" placeholder="粘贴第二份 JSON…" spellcheck="false" v-model="diffInput"></textarea>
   <div class="diff-panel-actions">
-    <button class="btn primary" id="btnDoDiff">开始对比</button>
+    <button class="btn primary" id="btnDoDiff" @click="doDiff">开始对比</button>
     <span class="hint" id="diffStats"></span>
   </div>
 </section>
@@ -179,16 +180,16 @@
     <div class="pane-head">
       <span>输入</span>
       <span class="spacer"></span>
-      <button class="btn ghost small" id="btnSample">载入示例</button>
-      <button class="btn ghost small" id="btnUpload">打开文件</button>
+      <button class="btn ghost small" id="btnSample" @click="loadSample">载入示例</button>
+      <button class="btn ghost small" id="btnUpload" @click="triggerUpload">打开文件</button>
       <input type="file" id="fileInput" accept=".json,.sql,.py,.go,.java,.txt,application/json,text/plain" hidden>
-      <button class="btn ghost small" id="btnPaste">粘贴剪贴板</button>
-      <button class="btn ghost small" id="btnClear">清空</button>
+      <button class="btn ghost small" id="btnPaste" @click="pasteClipboard">粘贴剪贴板</button>
+      <button class="btn ghost small" id="btnClear" @click="clearAll">清空</button>
       <span class="hint" id="inputStats">0 字符</span>
     </div>
     <div class="editor-wrap">
       <div class="gutter" id="inputGutter">1</div>
-      <textarea id="input" spellcheck="false" placeholder="在此粘贴代码，语言会自动检测…"></textarea>
+      <textarea id="input" spellcheck="false" placeholder="在此粘贴代码，语言会自动检测…" v-model="inputText"></textarea>
     </div>
   </section>
 
@@ -201,9 +202,9 @@
     </div>
     <div class="output-wrap">
       <div class="tree-search" id="treeSearchWrap" hidden>
-        <input type="text" id="treeSearch" placeholder="搜索键名或值…" spellcheck="false" aria-label="搜索树节点">
+        <input type="text" id="treeSearch" placeholder="搜索键名或值…" spellcheck="false" aria-label="搜索树节点" v-model="treeSearch">
         <span class="hint" id="treeSearchCount"></span>
-        <button class="btn ghost small" id="btnTreeSearchClear" title="清除搜索">×</button>
+        <button class="btn ghost small" id="btnTreeSearchClear" title="清除搜索" @click="clearTreeSearchAndFocus">×</button>
       </div>
       <pre id="output" class="code-view" tabindex="0"><code>格式化后的代码会显示在这里。</code></pre>
       <div id="tree" class="tree-view" tabindex="0" hidden></div>
@@ -226,16 +227,17 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="快捷键设置">
     <div class="modal-head">
       <h2>快捷键设置</h2>
-      <button class="btn ghost small" id="btnShortcutClose">关闭</button>
+      <button class="btn ghost small" id="btnShortcutClose" @click="closeShortcutSettings">关闭</button>
     </div>
     <p class="modal-hint">点「更改」，然后按下新的组合键（至少包含 Ctrl / Cmd 或 Alt，Esc 取消）。改完自动保存。</p>
     <div id="shortcutList"></div>
     <div class="modal-foot">
-      <button class="btn" id="btnShortcutReset">恢复默认</button>
+      <button class="btn" id="btnShortcutReset" @click="resetShortcuts">恢复默认</button>
     </div>
   </div>
 </div>
-
+</div>
+<script src="vue.global.prod.js"></script>
 <script src="sql-formatter.min.js"></script>
 <script src="app.js"></script>
 </body>
