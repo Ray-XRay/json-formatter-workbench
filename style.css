@@ -626,6 +626,30 @@ html[data-theme="jetbrains"] {
 html[data-theme="jetbrains"] .logo { background: linear-gradient(135deg, #ff3186, #7c4dff); }
 html[data-theme="jetbrains"] .toast { background: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, .15); }
 
+/* ---------- Tokyo Night 主题（官方配色：深海军蓝底 + 柔和蓝紫点缀） ---------- */
+html[data-theme="tokyonight"] {
+  color-scheme: dark;
+  --bg: #1a1b26;
+  --btn-hover: #292e42;
+  --panel: #1f2335;
+  --panel-2: #292e42;
+  --border: #2e3448;
+  --text: #c0caf5;
+  --muted: #787c99;
+  --accent: #7aa2f7;
+  --accent-hover: #89a8f5;
+  --green: #9ece6a;
+  --red: #f7768e;
+  --amber: #e0af68;
+  --key: #7aa2f7;
+  --string: #9ece6a;
+  --number: #ff9e64;
+  --bool: #bb9af7;
+  --null: #f7768e;
+  --punct: #89ddff;
+}
+html[data-theme="tokyonight"] .logo { background: linear-gradient(135deg, #7aa2f7, #bb9af7); }
+
 /* ---------- 顶栏主题下拉 ---------- */
 .theme-label { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .theme-label select {

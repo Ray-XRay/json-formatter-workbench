@@ -8,7 +8,7 @@
 (function () {
   try {
     var t = localStorage.getItem('json-wb-theme');
-    if (t === 'dark' || t === 'light' || t === 'retro' || t === 'oracle' || t === 'oracle-light' || t === 'datagrip' || t === 'jetbrains') {
+    if (t === 'dark' || t === 'light' || t === 'retro' || t === 'oracle' || t === 'oracle-light' || t === 'datagrip' || t === 'jetbrains' || t === 'tokyonight') {
       document.documentElement.setAttribute('data-theme', t);
     }
   } catch (e) {}
