@@ -11,6 +11,7 @@ Phase 2 业务迁移（vue2-phase2 分支，四个工具的功能从 1.x 完整�
 - **QR / 条码**：QR Code + Code 128；二维码尺寸精确固定小 200 / 中 300 / 大 400 px（整数倍率渲染 + 最近邻重采样）；GS1 参数表（AI 名称可改、日期类显示 YYYY-MM-DD、「GS1 示例」、模板导入）；生成历史（5 条、7 天过期）。
 - **到站看板**：小巴/巴士/港铁实时到站（三个政府域名）；同编号多来源全部列出任选；最近路线记来源；三张到站卡刷新动效（只有分钟数变了的卡才动，错开 70ms）；30 秒自动刷新。
 - **安全头**：vercel.json 加 CSP（`script-src 'self'`，无 `unsafe-eval`、无 `unsafe-inline`；`connect-src` 只放行三个政府 ETA 域名）与 nosniff / Referrer-Policy / Permissions-Policy；首绘主题脚本改成同源外链 `public/theme-init.js` 以保持 CSP 严格。
+- **修复**：/json-sql 页切到 SQL / Python / Go / Java 后格式化结果看不见——语言切到非 JSON 时强制回代码视图（1.x 的 updateLangUI 也是这么做的），非 JSON 格式化/压缩/验证成功时同样强制回代码视图；树形仍只属于 JSON。
 - **依赖**：sql-formatter 15.9.0、bwip-js 4.11.4 均经 npm 本地打包进构建产物，零 CDN；bwip-js 类型用本地 `src/vendor/bwip-js.d.ts`（包内类型走不通 exports、`@types/bwip-js` 缺 `toSVG` 与 `eclevel`）。
 
 ## [2.0.0-alpha] - 2026-11-18 (a75b7654)

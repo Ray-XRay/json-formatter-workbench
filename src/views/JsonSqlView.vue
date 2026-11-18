@@ -205,6 +205,12 @@ watch(inputText, (): void => {
   }
 })
 
+// 树形视图只属于 JSON：语言一切到非 JSON 就强制回代码视图，
+// 否则输出区会停在树形占位、看不见格式化结果（1.x 的 updateLangUI 也是这么做的）。
+watch(currentLang, (lang: Lang): void => {
+  if (lang !== 'json') currentView.value = 'code'
+})
+
 function setLang(mode: LangMode): void {
   langMode.value = mode
   saveLangMode(mode)
@@ -311,6 +317,8 @@ function doFormat(): void {
         download: downloadName(currentLang.value),
         stats: `${res.text.length} 字符`,
       })
+      // 非 JSON 没有树形视图：格式化成功时强制回代码视图，保证结果可见。
+      currentView.value = 'code'
       detailStats.value = `${LANGS[currentLang.value]} · ${res.text.split('\n').length} 行`
       setStatus(
         'ok',
@@ -339,6 +347,8 @@ function doMinify(): void {
     const min = minifySql(sqlText)
     lastValue.value = null
     showOutput(min, { mode: 'text', download: 'query.sql', stats: `${min.length} 字符` })
+    // 非 JSON 没有树形视图：压缩成功时强制回代码视图，保证结果可见。
+    currentView.value = 'code'
     detailStats.value = 'SQL · 已压成一行'
     setStatus('ok', '已压缩成一行')
     saveHistory(sqlText)
@@ -368,6 +378,8 @@ function doValidate(): void {
       outputMode.value = 'text'
       errorRawText.value = null
       diffVisible.value = false
+      // 非 JSON 没有树形视图：验证成功时强制回代码视图，保证结果可见。
+      currentView.value = 'code'
       setStatus('ok', res.message)
       outputStats.value = '结构正常'
       detailStats.value = `${LANGS[currentLang.value]} · ${text.split('\n').length} 行`
