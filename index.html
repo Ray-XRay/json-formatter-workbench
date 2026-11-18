@@ -9,24 +9,8 @@
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>MyWorkbench 2.0</title>
-    <script>
-      // No-flash theme: set the theme class before first paint.
-      // Mirrors src/composables/useTheme.ts — storage key 'wb20-theme',
-      // modes light / dark / system (default: follow OS).
-      try {
-        var stored = localStorage.getItem('wb20-theme')
-        var dark =
-          stored === 'dark' ||
-          (stored !== 'light' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches)
-        if (dark) {
-          document.documentElement.classList.add('dark')
-        }
-        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
-      } catch (e) {
-        /* storage / matchMedia unavailable — fall back to light */
-      }
-    </script>
+    <!-- No-flash theme init (same-origin file, keeps CSP strict: no 'unsafe-inline'). -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="app"></div>
