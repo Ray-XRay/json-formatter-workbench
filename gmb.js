@@ -46,12 +46,23 @@
   document.addEventListener('click', function (e) {
     if (!brandMenu.hidden && !e.target.closest('.brand-wrap')) closeBrand();
   });
+  /* 乾淨地址（/qr 等）：已在當前工具時不跳轉；本地 file:// 直接打開時補回 .html */
+  function goToTool(page) {
+    var cur = location.pathname.replace(/\.html$/, '').replace(/\/index$/, '');
+    if (cur === '') cur = '/';
+    if (page === cur) return;
+    if (location.protocol === 'file:') {
+      location.href = page === '/' ? 'index.html' : page.slice(1) + '.html';
+      return;
+    }
+    location.href = page;
+  }
   brandMenu.addEventListener('click', function (e) {
     var item = e.target.closest('.brand-item');
     if (!item) return;
     var page = item.getAttribute('data-page');
     closeBrand();
-    if (page && page !== 'gmb.html') location.href = page;
+    if (page) goToTool(page);
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeBrand();
