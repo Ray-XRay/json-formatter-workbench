@@ -25,8 +25,9 @@
 
 html, body { height: 100%; }
 
-/* Vue 3 挂载根：display:contents 让它在布局里不存在，四页共用 */
-#app { display: contents; }
+/* Vue 3 挂载根：本身就是纵向 flex 容器，代替 body 承接顶层布局。
+   不用 display:contents——Safari 下 Vue 挂载替换子节点后，display:contents 的子节点可能不渲染、整页只剩黑底（v1.15.0 用户在 iPhone 上遇到黑屏）。 */
+#app { display: flex; flex-direction: column; min-height: 100%; }
 
 body {
   margin: 0;
