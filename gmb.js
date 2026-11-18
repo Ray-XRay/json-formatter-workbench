@@ -248,6 +248,9 @@
   }
 
   // items: [{min, time, remark}]，time 已是 HH:MM
+  // 上次渲染的分鐘數（null = 無班次）：只有分鐘數真的變了的卡才播上升動畫，
+  // 沒變的卡不動，避免每 30 秒自動刷新時無謂閃爍
+  var lastEtaMin = [null, null, null];
   function renderEtaCards(items) {
     for (var i = 0; i < 3; i++) {
       var card = $('eta' + i);
@@ -255,30 +258,52 @@
       var timeEl = card.querySelector('.eta-time');
       var remarkEl = card.querySelector('.eta-remark');
       var item = items && items[i];
+      var newMin = (item && isFinite(Number(item.min))) ? Number(item.min) : null;
+      var changed = newMin !== lastEtaMin[i];
+      lastEtaMin[i] = newMin;
       if (!item) {
         minEl.textContent = '—';
         timeEl.textContent = '暫無班次';
         remarkEl.textContent = '';
         card.classList.remove('soon');
-        continue;
+      } else {
+        var diff = item.min;
+        minEl.textContent = diff <= 0 ? '即到' : String(diff);
+        if (diff > 0) {
+          var unit = document.createElement('span');
+          unit.className = 'eta-unit';
+          unit.textContent = '分鐘';
+          minEl.appendChild(unit);
+        }
+        timeEl.textContent = (item.time || '—') + ' 到站';
+        remarkEl.textContent = item.remark || '';
+        card.classList.toggle('soon', diff <= 0);
       }
-      var diff = item.min;
-      minEl.textContent = diff <= 0 ? '即到' : String(diff);
-      if (diff > 0) {
-        var unit = document.createElement('span');
-        unit.className = 'eta-unit';
-        unit.textContent = '分鐘';
-        minEl.appendChild(unit);
+      if (changed) {
+        // 先摘掉再加回（中間強制重排），動畫才能重新觸發；播完把 class 摘掉，免得殘留
+        // 注意：不能在 onEnd 裡直接用 card／i——它們是 var，迴圈跑完才觸發 animationend 時
+        // 已經變成最後一張卡／i=3；要用事件的 currentTarget 拿回真正播完的那張卡
+        card.classList.remove('eta-updated');
+        void card.offsetWidth;
+        card.classList.add('eta-updated');
+        var onEnd = function (e) {
+          var el = e.currentTarget;
+          el.removeEventListener('animationend', onEnd);
+          el.classList.remove('eta-updated');
+        };
+        card.addEventListener('animationend', onEnd);
       }
-      timeEl.textContent = (item.time || '—') + ' 到站';
-      remarkEl.textContent = item.remark || '';
-      card.classList.toggle('soon', diff <= 0);
     }
   }
 
   function stampUpdated() {
     var stamp = fmtNow();
-    $('routeUpdated').textContent = '更新於 ' + stamp;
+    var ru = $('routeUpdated');
+    ru.textContent = '更新於 ' + stamp;
+    // 時間戳淡入一次（與看板上升動畫呼應）
+    ru.classList.remove('stamp-updated');
+    void ru.offsetWidth;
+    ru.classList.add('stamp-updated');
     $('detailStats').textContent = '每分鐘更新 · ' + stamp;
     setStatus('ok', '已更新 ' + stamp);
   }
@@ -881,5 +906,8 @@
       }
     }
   });
+  // 測試鉤子（與 __wb / __pw 同款）：讓無頭測試能直接餵 ETA 數據驗刷新動畫，不用走路線搜尋的狀態機
+  window.__gmb = { renderEtaCards: renderEtaCards };
+
   app.mount('#app');
 })();
