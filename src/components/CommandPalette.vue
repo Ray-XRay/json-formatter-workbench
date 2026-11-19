@@ -9,8 +9,10 @@ import {
   DialogRoot,
   DialogTitle,
 } from 'reka-ui'
-import { Braces, BusFront, Check, KeyRound, Monitor, QrCode } from 'lucide-vue-next'
+import { Braces, BusFront, Check, KeyRound, Monitor, QrCode, Settings } from 'lucide-vue-next'
 import { useCommandPalette } from '../composables/useCommandPalette'
+import { useSettings } from '../composables/useSettings'
+import { useShortcuts } from '../composables/useShortcuts'
 import { FAMILIES, useTheme, type FamilyId, type ThemeFamily } from '../composables/useTheme'
 
 interface PaletteAction {
@@ -29,6 +31,8 @@ interface PaletteAction {
 
 const router = useRouter()
 const { isOpen, close } = useCommandPalette()
+const { open: openSettings } = useSettings()
+const { shortcutLabel } = useShortcuts()
 const { family, followSystem, setFamily, setFollowSystem, variantMetaOf } = useTheme()
 
 const query = ref('')
@@ -103,6 +107,20 @@ const themeActions = computed<PaletteAction[]>(() => [
   },
 ])
 
+/* 设置入口（alpha.8）：手机无键盘打不开 Ctrl+Alt+S，所以设置也要
+ *  在命令面板里可搜可点。hint 跟注册表走，用户改键后仍显示正确组合键。 */
+const settingsActions = computed<PaletteAction[]>(() => [
+  {
+    label: '设置',
+    keywords: '设置 历史 清除 快捷键 settings',
+    hint: shortcutLabel('openSettings'),
+    icon: Settings,
+    run: (): void => {
+      openSettings()
+    },
+  },
+])
+
 interface PaletteGroup {
   label: string
   items: PaletteAction[]
@@ -118,6 +136,7 @@ const groups = computed<PaletteGroup[]>(() => {
     q ? items.filter((a: PaletteAction): boolean => matches(a, q)) : items
   return [
     { label: '工具', items: filter(toolActions) },
+    { label: '设置', items: filter(settingsActions.value) },
     { label: '主题', items: filter(themeActions.value) },
   ].filter((g: PaletteGroup): boolean => g.items.length > 0)
 })
@@ -189,14 +208,14 @@ watch(isOpen, (open: boolean): void => {
         class="palette-content fixed left-1/2 top-[18%] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-border bg-popover shadow-2xl outline-none"
       >
         <DialogTitle class="sr-only">命令面板</DialogTitle>
-        <DialogDescription class="sr-only">搜索工具或切换主题</DialogDescription>
+        <DialogDescription class="sr-only">搜索工具、设置或切换主题</DialogDescription>
 
         <div class="flex items-center gap-2 border-b border-border px-4">
           <input
             ref="inputRef"
             v-model="query"
             type="text"
-            placeholder="搜索工具或切换主题…"
+            placeholder="搜索工具、设置或切换主题…"
             class="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             @keydown.down.prevent="moveDown"
             @keydown.up.prevent="moveUp"

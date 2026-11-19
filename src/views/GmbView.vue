@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
-import { LocateFixed } from 'lucide-vue-next'
+import { LocateFixed, RotateCcw } from 'lucide-vue-next'
+import WbDragBlock from '../components/WbDragBlock.vue'
 import WbSpinner from '../components/WbSpinner.vue'
 import WbTabs from '../components/WbTabs.vue'
+import { useBlockLayout } from '../composables/useBlockLayout'
+import { useToast } from '../composables/useToast'
 import type { WbTab } from '../components/WbTabs.vue'
 import { useGmb } from '../lib/gmb/useGmb'
 import { MTR_LINE_COLORS, lineChipText } from '../lib/gmb/mtrStations'
@@ -76,6 +79,103 @@ const {
   onDirPick: onDirPick2,
   onEtaAnimEnd: onEtaAnimEnd2,
 } = road2
+
+/** 區塊布局（Phase 4 可拖拽試點）：5 個區塊，預設順序 = 舊版式自上而下。
+ *  頁頭固定不參與；road2 / stops 只在 road 模式顯示，切模式時在完整
+ *  順序裡保留位置、切回來原地出現；拖拽與上/下移只對當前可見區塊操作。 */
+type GmbBlockId = 'controls' | 'eta' | 'road2' | 'stops' | 'help'
+const GMB_LAYOUT_KEY = 'wb20-gmb-layout'
+const GMB_DEFAULT_ORDER: readonly GmbBlockId[] = ['controls', 'eta', 'road2', 'stops', 'help']
+const GMB_BLOCK_LABELS: Record<GmbBlockId, string> = {
+  controls: '控制區',
+  eta: '下三班車',
+  road2: '第二條路線（換乘）',
+  stops: '全部站點',
+  help: '使用說明',
+}
+
+const {
+  order: blockOrder,
+  swap: swapBlocks,
+  moveBefore: moveBlockBefore,
+  moveAfter: moveBlockAfter,
+  resetToDefault: resetBlockLayout,
+} = useBlockLayout<GmbBlockId>(GMB_LAYOUT_KEY, GMB_DEFAULT_ORDER)
+const { push } = useToast()
+
+function isBlockVisible(id: GmbBlockId): boolean {
+  if (id === 'road2' || id === 'stops') return mode.value === 'road'
+  return true
+}
+const visibleBlocks = computed((): GmbBlockId[] =>
+  blockOrder.value.filter(isBlockVisible),
+)
+
+/** 拖拽中的區塊 id；落點（目標區塊 + 前/後）由 dragover 即時算。 */
+const dragId = ref<GmbBlockId | null>(null)
+const dropTarget = ref<{ id: GmbBlockId; position: 'before' | 'after' } | null>(null)
+
+function visibleIndex(id: GmbBlockId): number {
+  return visibleBlocks.value.indexOf(id)
+}
+
+function dropPositionFor(id: GmbBlockId): 'before' | 'after' | null {
+  const t = dropTarget.value
+  return t !== null && t.id === id ? t.position : null
+}
+
+/** 上/下移：在完整順序裡與相鄰「可見」區塊交換，隱藏區塊位置不動。 */
+function onBlockMoveUp(id: GmbBlockId): void {
+  const i = visibleIndex(id)
+  if (i > 0) swapBlocks(id, visibleBlocks.value[i - 1])
+}
+function onBlockMoveDown(id: GmbBlockId): void {
+  const i = visibleIndex(id)
+  if (i >= 0 && i < visibleBlocks.value.length - 1) {
+    swapBlocks(id, visibleBlocks.value[i + 1])
+  }
+}
+
+function onBlockDragStart(id: GmbBlockId): void {
+  dragId.value = id
+}
+function onBlockDragEnd(): void {
+  dragId.value = null
+  dropTarget.value = null
+}
+function onBlockDragOver(id: GmbBlockId, e: DragEvent): void {
+  if (dragId.value === null || dragId.value === id) {
+    dropTarget.value = null
+    return
+  }
+  const el = e.currentTarget as HTMLElement | null
+  if (el === null) return
+  const rect = el.getBoundingClientRect()
+  dropTarget.value = {
+    id,
+    position: e.clientY < rect.top + rect.height / 2 ? 'before' : 'after',
+  }
+}
+function onBlockDragLeave(e: DragEvent): void {
+  const el = e.currentTarget as HTMLElement | null
+  if (el !== null && e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return
+  dropTarget.value = null
+}
+function onBlockDrop(): void {
+  const dragged = dragId.value
+  const target = dropTarget.value
+  dragId.value = null
+  dropTarget.value = null
+  if (dragged === null || target === null || dragged === target.id) return
+  // 落在目標緊前/緊後：插在目標本體旁邊，夾在中間的隱藏區塊相對順序不變。
+  if (target.position === 'before') moveBlockBefore(dragged, target.id)
+  else moveBlockAfter(dragged, target.id)
+}
+
+function onResetLayout(): void {
+  resetBlockLayout()
+  push('已恢復預設佈局')
+}
 
 /** 模式 Tab（共享 WbTabs）：id 必須是 Mode，update 時先收窄再交給 setMode。 */
 const modeTabs: WbTab[] = [
@@ -157,14 +257,45 @@ const selectClass =
 <template>
   <div class="mx-auto w-full max-w-3xl space-y-6">
     <header class="space-y-1">
-      <h1 class="text-xl font-semibold tracking-tight">到站看板</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-xl font-semibold tracking-tight">到站看板</h1>
+        <button
+          type="button"
+          class="ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="把五個區塊恢復成預設順序"
+          @click="onResetLayout"
+        >
+          <RotateCcw class="h-3.5 w-3.5" />
+          恢復預設佈局
+        </button>
+      </div>
       <p class="text-sm text-muted-foreground">
         小巴、巴士、港鐵實時到站：輸路線號碼、選方向、選站，即見下三班車。
       </p>
     </header>
 
-    <!-- 控制區：路線、方向、上車站都在第一屏 -->
-    <section class="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
+    <!-- 區塊列表：:key 用區塊 id（不用序號），重排只移 DOM、不重掛區塊，
+         ETA 狀態與掛載進場動畫都不會被重觸發。 -->
+    <WbDragBlock
+      v-for="blockId in visibleBlocks"
+      :key="blockId"
+      :block-id="blockId"
+      :label="GMB_BLOCK_LABELS[blockId]"
+      :can-move-up="visibleIndex(blockId) > 0"
+      :can-move-down="visibleIndex(blockId) < visibleBlocks.length - 1"
+      :is-dragging="dragId === blockId"
+      :drop-position="dropPositionFor(blockId)"
+      @move-up="onBlockMoveUp(blockId)"
+      @move-down="onBlockMoveDown(blockId)"
+      @drag-start="onBlockDragStart(blockId)"
+      @drag-end="onBlockDragEnd"
+      @drag-over="onBlockDragOver(blockId, $event)"
+      @drag-leave="onBlockDragLeave"
+      @drop="onBlockDrop"
+    >
+      <!-- 控制區：路線、方向、上車站都在第一屏 -->
+      <template v-if="blockId === 'controls'">
+        <section class="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
       <!-- 模式切換：共享 WbTabs（滑動指示條）；面板切換見下方 wb-fade Transition -->
       <WbTabs :model-value="mode" :tabs="modeTabs" @update:model-value="onModeTab" />
 
@@ -395,11 +526,14 @@ const selectClass =
         <span class="flex-1" />
         <span class="text-xs text-muted-foreground">{{ detailStats }}</span>
       </div>
-    </section>
+        </section>
+      </template>
 
-    <!-- 下三班車 -->
-    <p class="text-xs font-medium tracking-wide text-muted-foreground">下三班車</p>
-    <section class="grid grid-cols-3 gap-3" aria-live="polite">
+      <!-- 下三班車 -->
+      <template v-else-if="blockId === 'eta'">
+        <div class="space-y-6">
+          <p class="text-xs font-medium tracking-wide text-muted-foreground">下三班車</p>
+          <section class="grid grid-cols-3 gap-3" aria-live="polite">
       <article
         v-for="(card, i) in etaCards"
         :key="card.label"
@@ -447,13 +581,13 @@ const selectClass =
           </div>
         </Transition>
       </article>
-    </section>
+          </section>
+        </div>
+      </template>
 
-    <!-- 第二條路線（換乘）：預設收起；與主面板同一 30 秒 tick 一起刷新 -->
-    <section
-      v-if="mode === 'road'"
-      class="rounded-lg border border-border bg-card p-5 shadow-sm"
-    >
+      <!-- 第二條路線（換乘）：預設收起；與主面板同一 30 秒 tick 一起刷新 -->
+      <template v-else-if="blockId === 'road2'">
+        <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
       <button
         type="button"
         class="flex w-full items-center justify-between gap-2 text-sm font-medium"
@@ -623,13 +757,12 @@ const selectClass =
           </div>
         </div>
       </div>
-    </section>
+        </section>
+      </template>
 
-    <!-- 全部站點：按鈕 + v-auto-animate 折疊（取代原生 <details> 的瞬間開合） -->
-    <section
-      v-if="mode === 'road'"
-      class="rounded-lg border border-border bg-card p-4 shadow-sm"
-    >
+      <!-- 全部站點：按鈕 + v-auto-animate 折疊（取代原生 <details> 的瞬間開合） -->
+      <template v-else-if="blockId === 'stops'">
+        <section class="rounded-lg border border-border bg-card p-4 shadow-sm">
       <button
         type="button"
         class="flex w-full items-center justify-between gap-2 text-sm font-medium"
@@ -690,10 +823,12 @@ const selectClass =
           </div>
         </div>
       </div>
-    </section>
+        </section>
+      </template>
 
-    <!-- 使用說明：按鈕 + v-auto-animate 折疊（取代原生 <details> 的瞬間開合） -->
-    <section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <!-- 使用說明：按鈕 + v-auto-animate 折疊（取代原生 <details> 的瞬間開合） -->
+      <template v-else-if="blockId === 'help'">
+        <section class="rounded-lg border border-border bg-card p-4 shadow-sm">
       <button
         type="button"
         class="flex w-full items-center justify-between gap-2 text-sm font-medium"
@@ -724,7 +859,9 @@ const selectClass =
           / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。
         </p>
       </div>
-    </section>
+        </section>
+      </template>
+    </WbDragBlock>
   </div>
 </template>
 
