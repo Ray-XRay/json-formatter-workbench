@@ -30,6 +30,20 @@ html[data-theme='light'] {
   --input: 240 6% 90%;
   --ring: 240 6% 10%;
   --radius: 0.5rem;
+  /* Shared motion tokens (Phase 3 contract — other workers consume these
+   * exact names; do not rename). Durations/easings are the alpha.5 audit
+   * values, tokenized, not changed. */
+  --wb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --wb-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --wb-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --wb-dur-fast: 120ms;
+  --wb-dur-base: 150ms;
+  --wb-dur-menu: 180ms;
+  --wb-dur-med: 200ms;
+  --wb-dur-drawer: 220ms;
+  --wb-dur-route: 280ms;
+  --wb-dur-eta-in: 300ms;
+  --wb-dur-eta-rise: 380ms;
   /* Brand gradient (logo) + JSON syntax colours. */
   --brand-1: 240 6% 10%;
   --brand-2: 240 4% 32%;
@@ -281,17 +295,21 @@ html[data-theme='dracula'] {
   color: hsl(var(--code-punct));
 }
 
-/* Theme-switch fade: applied to <html> by useTheme during a mode change. */
-.theme-transition *,
-.theme-transition *::before,
-.theme-transition *::after {
-  transition:
-    background-color 0.25s ease,
-    border-color 0.25s ease,
-    color 0.25s ease,
-    fill 0.25s ease,
-    stroke 0.25s ease,
-    box-shadow 0.25s ease;
+/* Theme-switch fade: applied to <html> by useTheme during a mode change.
+ * Guarded by no-preference (useTheme also skips adding the class when
+ * reduced motion is on) — 0.25s has no shared token, value kept as-is. */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-transition *,
+  .theme-transition *::before,
+  .theme-transition *::after {
+    transition:
+      background-color 0.25s ease,
+      border-color 0.25s ease,
+      color 0.25s ease,
+      fill 0.25s ease,
+      stroke 0.25s ease,
+      box-shadow 0.25s ease;
+  }
 }
 
 /* View Transitions (route changes, ported from 1.x v1.14.0): old page
@@ -339,15 +357,15 @@ html[data-theme='dracula'] {
 
 @media (prefers-reduced-motion: no-preference) {
   ::view-transition-old(root) {
-    animation: vt-out 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: vt-out var(--wb-dur-route) var(--wb-ease-out) both;
   }
 
   ::view-transition-new(root) {
-    animation: vt-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: vt-in var(--wb-dur-route) var(--wb-ease-out) both;
   }
 
   html.nav-enter main {
-    animation: page-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    animation: page-in var(--wb-dur-route) var(--wb-ease-out) backwards;
   }
 }
 
@@ -355,8 +373,8 @@ html[data-theme='dracula'] {
 .toast-enter-active,
 .toast-leave-active {
   transition:
-    opacity 200ms ease,
-    transform 200ms ease;
+    opacity var(--wb-dur-med) ease,
+    transform var(--wb-dur-med) ease;
 }
 
 .toast-enter-from,
@@ -379,12 +397,19 @@ html[data-theme='dracula'] {
 }
 
 .animate-copy-pop {
-  animation: copy-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: copy-pop var(--wb-dur-eta-in) var(--wb-ease-spring);
 }
 
 /* Dropdown menu (theme picker) enter. */
 .dropdown-content[data-state='open'] {
-  animation: dropdown-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: dropdown-in var(--wb-dur-menu) var(--wb-ease-out);
+}
+
+/* Dropdown menu close: Radix keeps the content mounted while a close
+ * animation is defined, so the menu fades/scales out instead of
+ * unmounting instantly. NOT visually verified — needs runtime check. */
+.dropdown-content[data-state='closed'] {
+  animation: dropdown-out var(--wb-dur-menu) var(--wb-ease-out);
 }
 
 @keyframes dropdown-in {
@@ -396,6 +421,108 @@ html[data-theme='dracula'] {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+@keyframes dropdown-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+/* Shared Vue <Transition> classes — ONE implementation per interaction,
+ * reused by every view (Phase 3: UI must be unified and reusable).
+ * Names are a contract for the other workers; do not rename.
+ * All are inactive under prefers-reduced-motion (see the reduce block
+ * at the end of this file). */
+
+/* wb-menu: dropdown / popover menus (BrandMenu, tool pickers). Same
+ * motion as the reka dropdown [data-state] rules above. */
+.wb-menu-enter-active,
+.wb-menu-leave-active {
+  transition:
+    opacity var(--wb-dur-menu) var(--wb-ease-out),
+    transform var(--wb-dur-menu) var(--wb-ease-out);
+}
+
+.wb-menu-enter-from,
+.wb-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
+/* wb-overlay: backdrop fade (dialogs, drawers). */
+.wb-overlay-enter-active,
+.wb-overlay-leave-active {
+  transition: opacity var(--wb-dur-med) var(--wb-ease-out);
+}
+
+.wb-overlay-enter-from,
+.wb-overlay-leave-to {
+  opacity: 0;
+}
+
+/* wb-dialog: dialog / panel scale + fade. */
+.wb-dialog-enter-active,
+.wb-dialog-leave-active {
+  transition:
+    opacity var(--wb-dur-base) var(--wb-ease-standard),
+    transform var(--wb-dur-base) var(--wb-ease-standard);
+}
+
+.wb-dialog-enter-from,
+.wb-dialog-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+/* wb-fade: opacity only. */
+.wb-fade-enter-active,
+.wb-fade-leave-active {
+  transition: opacity var(--wb-dur-med) var(--wb-ease-out);
+}
+
+.wb-fade-enter-from,
+.wb-fade-leave-to {
+  opacity: 0;
+}
+
+/* wb-chevron: rotating disclosure chevron. Pair with
+ * .wb-chevron--open on the expanded state. */
+.wb-chevron {
+  transition: transform var(--wb-dur-base) var(--wb-ease-out);
+}
+
+.wb-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Shared spinner (WbSpinner.vue): border circle in currentColor with a
+ * transparent top — the GMB/QR loading style, one implementation.
+ * Spin itself comes from Tailwind's `animate-spin` on the element. */
+.wb-spinner {
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+}
+
+.wb-spinner--sm {
+  width: 14px;
+  height: 14px;
+}
+
+.wb-spinner--md {
+  width: 18px;
+  height: 18px;
+}
+
+.wb-spinner--lg {
+  width: 24px;
+  height: 24px;
 }
 
 /* Reusable result fade-in (result areas / previews in the views):
@@ -412,7 +539,7 @@ html[data-theme='dracula'] {
 }
 
 .wb-result-in {
-  animation: wb-result-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: wb-result-in var(--wb-dur-med) var(--wb-ease-out) both;
 }
 
 /* Buttons: one shared 120ms transition (hover, press, shadow, opacity).
@@ -422,12 +549,12 @@ html[data-theme='dracula'] {
  * rule below still wins during a theme switch (higher specificity). */
 button {
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease,
-    box-shadow 120ms ease,
-    transform 120ms ease,
-    opacity 120ms ease;
+    background-color var(--wb-dur-fast) ease,
+    border-color var(--wb-dur-fast) ease,
+    color var(--wb-dur-fast) ease,
+    box-shadow var(--wb-dur-fast) ease,
+    transform var(--wb-dur-fast) ease,
+    opacity var(--wb-dur-fast) ease;
 }
 
 /* Route skeleton (first-visit lazy chunk loading): title bar + cards. */
@@ -468,20 +595,6 @@ button {
 .route-skeleton-card {
   animation: skeleton-pulse 1.1s ease-in-out infinite alternate;
 }
-@keyframes eta-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-eta-rise {
-  animation: eta-rise 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .toast-enter-active,
@@ -490,15 +603,50 @@ button {
     transition: none;
   }
 
+  /* Shared Vue <Transition> classes + disclosure chevron: no motion,
+   * end state applies instantly. */
+  .wb-menu-enter-active,
+  .wb-menu-leave-active,
+  .wb-overlay-enter-active,
+  .wb-overlay-leave-active,
+  .wb-dialog-enter-active,
+  .wb-dialog-leave-active,
+  .wb-fade-enter-active,
+  .wb-fade-leave-active,
+  .wb-chevron {
+    transition: none;
+  }
+
+  /* Tailwind transition-* utilities (chevron rotation, tab colours,
+   * switches, strength bar, …): end state applies instantly instead of
+   * animating. Unlayered, so this beats Tailwind's @layer utilities;
+   * transitions never decide an end state, so layout is unaffected.
+   * The attribute selector also catches variant-prefixed utilities
+   * (e.g. `hover:transition-colors`) and arbitrary-value ones. */
+  .transition,
+  .transition-all,
+  .transition-colors,
+  .transition-opacity,
+  .transition-shadow,
+  .transition-transform,
+  [class*='transition-'] {
+    transition: none;
+  }
+
   .animate-copy-pop,
-  .animate-eta-rise,
   .wb-result-in,
   .route-skeleton-title,
   .route-skeleton-card {
     animation: none;
   }
 
-  .dropdown-content[data-state='open'] {
+  /* Loading spinner: freeze it (role="status" still announces loading). */
+  .wb-spinner {
+    animation: none;
+  }
+
+  .dropdown-content[data-state='open'],
+  .dropdown-content[data-state='closed'] {
     animation: none;
   }
 }

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronDown, Download, History, Image as ImageIcon, Plus, QrCode, X } from 'lucide-vue-next'
 import bwipjs from 'bwip-js'
 import CopyButton from '../components/CopyButton.vue'
+import WbSpinner from '../components/WbSpinner.vue'
 import { useToast } from '../composables/useToast'
 import {
   EC_OPTIONS,
@@ -83,6 +84,10 @@ const isGenerating = ref(false)
 const optionsOpen = ref(false)
 const gs1Open = ref(false)
 const historyOpen = ref(false)
+
+/* 预览每次生成都重播 .wb-result-in（canvas :key 切换触发，与 JsonSqlView 的
+ * resultAnimKey 同理） */
+const previewAnimKey = ref(0)
 
 const gs1Data = ref<Gs1Data | null>(null)
 const gs1DismissedText = ref<string | null>(null)
@@ -292,11 +297,24 @@ function importGs1Template(): void {
 }
 
 /* ---------- 按钮动作 ---------- */
+/** 让出两帧再算：生成按钮的 spinner 先画出来，否则同步渲染瞬间完成、
+ * loading 永远看不到。 */
+function nextFrame(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
 async function doGenerate(): Promise<void> {
   if (isGenerating.value) return
   isGenerating.value = true
+  previewAnimKey.value += 1
   try {
+    // 先等一帧让 canvas 以新 :key 重建（canvasRef 指向新画布），再让出两帧画 spinner
     await nextTick()
+    await nextFrame()
     render()
     updateGs1Panel()
     historyItems.value = saveQrHistory(text.value)
@@ -613,10 +631,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           :disabled="isGenerating"
           @click="doGenerate"
         >
-          <span
-            v-if="isGenerating"
-            class="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground"
-          />
+          <WbSpinner v-if="isGenerating" size="sm" />
           {{ isGenerating ? '生成中…' : '生成' }}
         </button>
         <button
@@ -654,6 +669,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
       </label>
       <!-- 手机上：纠错/颜色/下方文字收进「选项」折叠区，默认收起 -->
       <div
+        v-auto-animate
         class="max-lg:order-7 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:contents"
       >
         <button
@@ -665,16 +681,14 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           <span class="flex-1" />
           <ChevronDown
             :class="[
-              'h-4 w-4 text-muted-foreground transition-transform',
-              optionsOpen ? 'rotate-180' : '',
+              'wb-chevron h-4 w-4 text-muted-foreground',
+              optionsOpen ? 'wb-chevron--open' : '',
             ]"
           />
         </button>
         <div
-          :class="[
-            'flex flex-wrap items-center gap-x-4 gap-y-3 max-lg:border-t max-lg:border-border max-lg:p-3 lg:contents',
-            optionsOpen ? '' : 'max-lg:hidden',
-          ]"
+          v-if="optionsOpen || isDesktop"
+          class="flex flex-wrap items-center gap-x-4 gap-y-3 max-lg:border-t max-lg:border-border max-lg:p-3 lg:contents"
         >
       <label v-if="isQr" :class="labelBase">
         纠错级别
@@ -816,6 +830,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
         />
         <div
           v-if="gs1Visible"
+          v-auto-animate
           :style="gs1PanelStyle"
           class="max-lg:order-8 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:flex lg:min-h-0 lg:flex-col lg:border-t lg:border-border"
         >
@@ -846,14 +861,14 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
             </button>
             <ChevronDown
               :class="[
-                'h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden',
-                gs1Open ? 'rotate-180' : '',
+                'wb-chevron h-4 w-4 shrink-0 text-muted-foreground lg:hidden',
+                gs1Open ? 'wb-chevron--open' : '',
               ]"
             />
           </div>
           <!-- 手机上手风琴主体：默认收起，GS1 解析出来时自动展开 -->
           <div
-            :class="gs1Open ? '' : 'max-lg:hidden'"
+            v-if="gs1Open || isDesktop"
             class="max-lg:border-t max-lg:border-border lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
           >
           <div class="flex shrink-0 items-center gap-2 px-3 pb-2">
@@ -869,7 +884,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
               导入模板
             </button>
           </div>
-          <div class="overflow-y-auto px-2 pb-1 max-lg:max-h-[40dvh] lg:min-h-0 lg:flex-1">
+          <div v-auto-animate class="overflow-y-auto px-2 pb-1 max-lg:max-h-[40dvh] lg:min-h-0 lg:flex-1">
             <div
               v-for="p in gs1Params"
               :key="p.id"
@@ -971,6 +986,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
         <!-- 生成历史：手机上默认收起的手风琴 -->
         <div
           v-if="historyItems.length"
+          v-auto-animate
           class="max-lg:order-9 max-lg:rounded-lg max-lg:border max-lg:border-border max-lg:bg-card max-lg:shadow-sm lg:shrink-0 lg:border-t lg:border-border"
         >
           <div
@@ -985,8 +1001,8 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
             <span class="flex-1" />
             <ChevronDown
               :class="[
-                'h-4 w-4 shrink-0 text-muted-foreground transition-transform lg:hidden',
-                historyOpen ? 'rotate-180' : '',
+                'wb-chevron h-4 w-4 shrink-0 text-muted-foreground lg:hidden',
+                historyOpen ? 'wb-chevron--open' : '',
               ]"
             />
             <button
@@ -999,10 +1015,9 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
             </button>
           </div>
           <div
-            :class="[
-              'max-h-32 overflow-y-auto px-2 pb-2',
-              historyOpen ? '' : 'max-lg:hidden',
-            ]"
+            v-if="historyOpen || isDesktop"
+            v-auto-animate
+            class="max-h-32 overflow-y-auto px-2 pb-2"
           >
             <button
               v-for="item in historyItems"
@@ -1041,18 +1056,21 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
           >
         </div>
         <div
-          class="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-4"
+          class="grid min-h-0 flex-1 place-items-center place-content-center overflow-auto bg-muted/30 p-4"
         >
           <canvas
             v-show="generated"
             ref="canvasRef"
+            :key="previewAnimKey"
             :class="{ 'wb-result-in': generated }"
-            class="h-auto w-auto max-w-full"
+            class="col-start-1 row-start-1 h-auto w-auto max-w-full"
             style="image-rendering: pixelated"
           />
-          <p v-show="!generated" class="text-sm text-muted-foreground">
-            输入内容后自动生成
-          </p>
+          <Transition name="wb-fade">
+            <p v-show="!generated" class="col-start-1 row-start-1 text-sm text-muted-foreground">
+              输入内容后自动生成
+            </p>
+          </Transition>
         </div>
       </div>
     </section>
@@ -1061,7 +1079,7 @@ const labelBase = 'flex items-center gap-1.5 text-sm text-muted-foreground'
     <footer
       class="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm max-lg:order-10"
     >
-      <span :class="['h-2.5 w-2.5 shrink-0 rounded-full', statusDotClass]" />
+      <span :class="['h-2.5 w-2.5 shrink-0 rounded-full', statusDotClass, isGenerating ? 'motion-safe:animate-pulse' : '']" />
       <span>{{ statusMessage }}</span>
       <span class="flex-1" />
       <span

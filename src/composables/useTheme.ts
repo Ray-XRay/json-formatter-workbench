@@ -117,7 +117,9 @@ const isDark = computed<boolean>((): boolean => meta.value.dark)
 
 function applyTheme(animate: boolean): void {
   const root = document.documentElement
-  if (animate) {
+  // No colour fade under reduced motion — the theme still switches instantly.
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (animate && !reduceMotion) {
     // Enables the smooth colour/background/border fade defined in main.css.
     root.classList.add(TRANSITION_CLASS)
     window.setTimeout((): void => {

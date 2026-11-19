@@ -255,19 +255,28 @@ watch(isOpen, (open: boolean): void => {
 
 <style scoped>
 .palette-overlay[data-state='open'] {
-  animation: palette-fade-in 150ms ease-out;
+  animation: palette-fade-in var(--wb-dur-base) ease-out;
 }
 
 .palette-overlay[data-state='closed'] {
-  animation: palette-fade-out 150ms ease-in;
+  animation: palette-fade-out var(--wb-dur-base) ease-in;
 }
 
 .palette-content[data-state='open'] {
-  animation: palette-content-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: palette-content-in var(--wb-dur-base) var(--wb-ease-standard);
 }
 
 .palette-content[data-state='closed'] {
-  animation: palette-content-out 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: palette-content-out var(--wb-dur-base) var(--wb-ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palette-overlay[data-state='open'],
+  .palette-overlay[data-state='closed'],
+  .palette-content[data-state='open'],
+  .palette-content[data-state='closed'] {
+    animation: none;
+  }
 }
 
 @keyframes palette-fade-in {

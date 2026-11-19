@@ -103,7 +103,6 @@ export function useGmb(): {
   autoLocate: Ref<boolean>
   status: Ref<StatusView>
   updatedAt: Ref<string>
-  stampKey: Ref<number>
   etaItems: Ref<(EtaItem | null)[]>
   etaAnim: Ref<boolean[]>
   etaNumKey: Ref<string[]>
@@ -151,7 +150,6 @@ export function useGmb(): {
   const recent = ref<RecentEntry[]>([])
   const status = ref<StatusView>({ type: 'idle', message: '就緒' })
   const updatedAt = ref('')
-  const stampKey = ref(0)
 
   // 小巴
   const gmbRouteCode = ref('')
@@ -190,9 +188,30 @@ export function useGmb(): {
   const etaNumKey = ref<string[]>(['k0', 'k1', 'k2'])
   let numKeySeq = 0
   const lastEtaMin: (number | null)[] = [null, null, null]
-  const reducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // 減弱動態偏好：即時監聽 matchMedia，作業階段改系統設定也生效（不只載入時快照）。
+  const reducedMotionQuery =
+    typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null
+  const reducedMotion = ref(reducedMotionQuery?.matches ?? false)
+
+  function onReducedMotionChange(e: MediaQueryListEvent): void {
+    reducedMotion.value = e.matches
+  }
+
+  // 進行中的資料請求計數：狀態點在有請求在飛時呼吸脈衝（見 statusDotClass）。
+  const working = ref(false)
+  let workingCount = 0
+
+  function markWorkingStart(): void {
+    workingCount += 1
+    working.value = true
+  }
+
+  function markWorkingEnd(): void {
+    workingCount = Math.max(0, workingCount - 1)
+    if (workingCount === 0) working.value = false
+  }
 
   let etaTimer: number | undefined
   const animTimers: number[] = []
@@ -209,7 +228,7 @@ export function useGmb(): {
       const changed = newMin !== lastEtaMin[i]
       lastEtaMin[i] = newMin
       etaItems.value[i] = item
-      if (changed && !reducedMotion) {
+      if (changed && !reducedMotion.value) {
         // 數字掉落動效：換 :key 觸發舊數字離場、新數字落下；三卡錯開在模板裡按序加 delay
         numKeySeq += 1
         etaNumKey.value[i] = `n${numKeySeq}`
@@ -230,7 +249,6 @@ export function useGmb(): {
   function stampUpdated(): void {
     const stamp = fmtNow()
     updatedAt.value = stamp
-    stampKey.value += 1
     setStatus('ok', `更新於 ${stamp}`)
   }
 
@@ -330,10 +348,13 @@ export function useGmb(): {
   })
 
   const statusDotClass = computed<string>(() => {
-    if (status.value.type === 'ok') return 'bg-green-500'
-    if (status.value.type === 'err') return 'bg-red-500'
-    if (status.value.type === 'warn') return 'bg-amber-500'
-    return 'bg-muted-foreground/50'
+    let cls: string
+    if (status.value.type === 'ok') cls = 'bg-green-500'
+    else if (status.value.type === 'err') cls = 'bg-red-500'
+    else if (status.value.type === 'warn') cls = 'bg-amber-500'
+    else cls = 'bg-muted-foreground/50'
+    // 查資料進行中：狀態點呼吸脈衝（動畫本身在 GmbView.vue，減弱動態時不播）。
+    return working.value ? `${cls} gmb-status-pulse` : cls
   })
 
   // 更新時間只在底部狀態行出現一次（status.message 的「更新於 HH:MM:SS」）；
@@ -361,6 +382,7 @@ export function useGmb(): {
     setStatus('idle', `正在找 ${clean}…`)
     routeInput.value = clean
     candidates.value = []
+    markWorkingStart()
     try {
       const probes: Promise<RouteCandidate | null>[] = []
       for (const region of REGIONS) {
@@ -422,6 +444,7 @@ export function useGmb(): {
       return false
     } finally {
       loading.value = false
+      markWorkingEnd()
     }
   }
 
@@ -480,12 +503,17 @@ export function useGmb(): {
       await roadSearch(code, {})
       return
     }
-    const cand = await probe
-    if (cand) {
-      candidates.value = [cand]
-      roadLoadCandidate(cand, {})
-    } else {
-      await roadSearch(code, {})
+    markWorkingStart()
+    try {
+      const cand = await probe
+      if (cand) {
+        candidates.value = [cand]
+        roadLoadCandidate(cand, {})
+      } else {
+        await roadSearch(code, {})
+      }
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -521,6 +549,7 @@ export function useGmb(): {
   async function loadStops(preferStop?: number): Promise<void> {
     if (!gmbRouteId.value || !gmbRouteSeq.value) return
     setStatus('idle', '正在載入站點…')
+    markWorkingStart()
     try {
       const stops = await fetchGmbStops(gmbRouteId.value, gmbRouteSeq.value)
       gmbStops.value = stops
@@ -531,6 +560,8 @@ export function useGmb(): {
       setStop(stop)
     } catch {
       setStatus('err', '站點載入失敗，請再試一次')
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -543,6 +574,7 @@ export function useGmb(): {
   async function loadEta(): Promise<void> {
     if (!gmbRouteId.value || !gmbRouteSeq.value || !gmbStopSeq.value) return
     setStatus('idle', '正在查到站時間…')
+    markWorkingStart()
     try {
       const { enabled, items } = await fetchGmbEta(
         gmbRouteId.value,
@@ -558,6 +590,8 @@ export function useGmb(): {
       stampUpdated()
     } catch {
       setStatus('err', '到站時間查不到，請再試一次')
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -599,6 +633,7 @@ export function useGmb(): {
     const b = bus.value
     if (!b.code || !b.dirKey) return
     setStatus('idle', '正在載入巴士站…')
+    markWorkingStart()
     try {
       const stops = await fetchBusStops(b.op, b.code, b.dirKey, b.serviceType)
       // 查詢期間用戶可能已切走：只在仍是同一條路線、同一方向時寫回
@@ -611,6 +646,8 @@ export function useGmb(): {
       busSetStop(stop)
     } catch {
       setStatus('err', '巴士站載入失敗，請再試一次')
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -627,6 +664,7 @@ export function useGmb(): {
     const b = bus.value
     if (!b.code || !b.stopSeq) return
     setStatus('idle', '正在查巴士到站時間…')
+    markWorkingStart()
     try {
       const list =
         b.op === 'KMB'
@@ -636,6 +674,8 @@ export function useGmb(): {
       stampUpdated()
     } catch {
       setStatus('err', '到站時間查不到，請再試一次')
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -659,6 +699,7 @@ export function useGmb(): {
     const m = mtr.value
     if (!m.line || !m.sta) return
     setStatus('idle', '正在查港鐵班次…')
+    markWorkingStart()
     try {
       const list = await fetchMtrEta(m.line, m.sta, m.dir)
       renderEtaCards(list)
@@ -666,6 +707,8 @@ export function useGmb(): {
       else stampUpdated()
     } catch {
       setStatus('err', '港鐵班次查不到，請再試一次')
+    } finally {
+      markWorkingEnd()
     }
   }
 
@@ -856,10 +899,12 @@ export function useGmb(): {
   onMounted(() => {
     init()
     startAutoRefresh()
+    reducedMotionQuery?.addEventListener('change', onReducedMotionChange)
   })
 
   onUnmounted(() => {
     stopAutoRefresh()
+    reducedMotionQuery?.removeEventListener('change', onReducedMotionChange)
     for (const t of animTimers) window.clearTimeout(t)
     animTimers.length = 0
   })
@@ -883,7 +928,6 @@ export function useGmb(): {
     autoLocate,
     status,
     updatedAt,
-    stampKey,
     etaItems,
     etaAnim,
     etaNumKey,

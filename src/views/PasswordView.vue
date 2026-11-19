@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import CopyButton from '../components/CopyButton.vue'
+import WbSpinner from '../components/WbSpinner.vue'
+import WbTabs, { type WbTab } from '../components/WbTabs.vue'
 import { useToast } from '../composables/useToast'
 import { genRandom, randomBits } from '../lib/password/random'
 import { analyzePassword, crackTimeText, strengthOf, type PasswordAnalysis, type StrengthTier } from '../lib/password/strength'
@@ -51,18 +53,36 @@ let pasteTimer: number | undefined
 const generating = ref(false)
 const pasteOpen = ref(false)
 const checkOpen = ref(false)
-/* 结果区每次生成都重播淡入（:key 切换触发 .wb-result-in） */
+/* 结果文本每次生成/换备选都重播淡入（输出元素 :key 切换触发 .wb-result-in；
+ * 强度条与备选列表不包进 :key，宽度/列表动画才能就地播） */
 const resultAnimKey = ref(0)
 
-/* 手机端 Tab 切模式：改 options.mode 即可，复用下面的 watch(options) 重新生成 */
-function setMode(mode: PasswordMode): void {
-  options.mode = mode
+/* 手机端模式 Tab（WbTabs 发 string，合法值才收）：改 options.mode 即可，
+ * 复用下面的 watch(options) 重新生成 */
+const passwordModeTabs: WbTab[] = [
+  { id: 'random', label: '随机密码' },
+  { id: 'mnemonic', label: '助记词' },
+  { id: 'number', label: '随机数' },
+]
+
+function setMode(mode: string): void {
+  if (mode === 'random' || mode === 'mnemonic' || mode === 'number') {
+    options.mode = mode
+  }
 }
 
 /* ---------- 分隔条：横向拖改宽（pw-wb-split），窄屏纵向拖改高（pw-wb-split-v） ---------- */
 const panesRef = ref<HTMLElement | null>(null)
 const splitPct = ref(50)
 const splitPctV = ref(50)
+
+/* 桌面端（lg+）折叠区永远展开：v-if 靠它判断，v-auto-animate 只在手机上播高度动画 */
+const isDesktop = ref(false)
+let mq: MediaQueryList | null = null
+
+function onMqChange(e: MediaQueryListEvent): void {
+  isDesktop.value = e.matches
+}
 
 function restoreSplit(): void {
   try {
@@ -157,9 +177,20 @@ function applyList(list: string[], b: number): void {
 
 /* 生成按钮 loading 态：同步模式瞬间完成，只对异步的助记词真正显示；
  * 返回值表示是否有异步任务在跑（true 时由任务完成后再关 loading）。 */
-function generate(): void {
+/** 让出两帧再算：生成按钮的 spinner 先画出来，否则同步生成瞬间完成、
+ * loading 永远看不到。 */
+function nextFrame(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+async function generate(): Promise<void> {
   generating.value = true
   resultAnimKey.value += 1
+  await nextFrame()
   const asyncPending = generateInner()
   if (!asyncPending) generating.value = false
 }
@@ -270,6 +301,7 @@ function setPin(digits: number): void {
 
 function swapAlt(pw: string): void {
   currentOutput.value = pw
+  resultAnimKey.value += 1
   setStatus('ok', '已换成备选')
 }
 
@@ -422,12 +454,16 @@ function onModeChange(e: Event): void {
 }
 
 onMounted((): void => {
+  mq = window.matchMedia('(min-width: 1024px)')
+  isDesktop.value = mq.matches
+  mq.addEventListener('change', onMqChange)
   generate()
 })
 
 onUnmounted((): void => {
   if (checkTimer !== undefined) window.clearTimeout(checkTimer)
   if (pasteTimer !== undefined) window.clearTimeout(pasteTimer)
+  mq?.removeEventListener('change', onMqChange)
 })
 </script>
 
@@ -461,21 +497,7 @@ onUnmounted((): void => {
         class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-70"
         @click="generate"
       >
-        <svg
-          v-if="generating"
-          class="h-4 w-4 animate-spin"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path
-            class="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
+        <WbSpinner v-if="generating" size="sm" />
         {{ generating ? '生成中…' : '生成' }}
       </button>
       <CopyButton
@@ -504,52 +526,15 @@ onUnmounted((): void => {
       <span class="text-xs text-muted-foreground">只在浏览器里生成，不上传、不保存</span>
     </section>
 
-    <!-- 手机端模式 Tab：随机密码 / 助记词 / 随机数平级切换，固定在工具栏下方；
+    <!-- 手机端模式 Tab：WbTabs（共享 Tab 栏，滑动指示条），固定在工具栏下方；
          切 Tab 即改 options.mode，复用 watch(options) 联动重新生成 -->
-    <nav aria-label="生成模式" class="flex gap-2 lg:hidden" role="tablist">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="options.mode === 'random'"
-        class="h-11 flex-1 rounded-lg border text-sm font-medium transition-colors active:scale-[0.98]"
-        :class="
-          options.mode === 'random'
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-card text-foreground hover:bg-accent'
-        "
-        @click="setMode('random')"
-      >
-        随机密码
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="options.mode === 'mnemonic'"
-        class="h-11 flex-1 rounded-lg border text-sm font-medium transition-colors active:scale-[0.98]"
-        :class="
-          options.mode === 'mnemonic'
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-card text-foreground hover:bg-accent'
-        "
-        @click="setMode('mnemonic')"
-      >
-        助记词
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="options.mode === 'number'"
-        class="h-11 flex-1 rounded-lg border text-sm font-medium transition-colors active:scale-[0.98]"
-        :class="
-          options.mode === 'number'
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-border bg-card text-foreground hover:bg-accent'
-        "
-        @click="setMode('number')"
-      >
-        随机数
-      </button>
-    </nav>
+    <WbTabs
+      :model-value="options.mode"
+      :tabs="passwordModeTabs"
+      aria-label="生成模式"
+      class="lg:hidden"
+      @update:model-value="setMode"
+    />
 
     <div
       ref="panesRef"
@@ -568,146 +553,157 @@ onUnmounted((): void => {
         >
           <h2 class="text-sm font-medium">设置</h2>
 
-          <div v-if="options.mode === 'random'" class="space-y-2">
-            <label class="flex items-center gap-3 text-sm">
-              长度
-              <input
-                v-model.number="options.length"
-                type="range"
-                min="8"
-                max="64"
-                step="1"
-                aria-label="密码长度"
-                class="wb-length-slider min-w-0 flex-1 accent-primary"
-              />
-              <input
-                v-model.number="options.length"
-                type="number"
-                min="8"
-                max="64"
-                step="1"
-                aria-label="密码长度数字"
-                class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
-              />
-            </label>
-            <p class="text-xs text-muted-foreground">8–64 位，当前 {{ options.length }} 位</p>
-          </div>
-
-          <div v-if="options.mode === 'random'" class="space-y-2">
-            <p class="text-sm">字符集</p>
-            <div class="grid grid-cols-2 gap-2">
-              <label class="flex items-center gap-2 text-sm">
-                <input v-model="options.upper" type="checkbox" class="h-4 w-4 accent-primary" />
-                大写字母 A–Z
+          <Transition name="wb-fade" mode="out-in">
+            <div v-if="options.mode === 'random'" class="space-y-2">
+              <label class="flex items-center gap-3 text-sm">
+                长度
+                <input
+                  v-model.number="options.length"
+                  type="range"
+                  min="8"
+                  max="64"
+                  step="1"
+                  aria-label="密码长度"
+                  class="wb-length-slider min-w-0 flex-1 accent-primary"
+                />
+                <input
+                  v-model.number="options.length"
+                  type="number"
+                  min="8"
+                  max="64"
+                  step="1"
+                  aria-label="密码长度数字"
+                  class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
+                />
               </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input v-model="options.lower" type="checkbox" class="h-4 w-4 accent-primary" />
-                小写字母 a–z
-              </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input v-model="options.digits" type="checkbox" class="h-4 w-4 accent-primary" />
-                数字 0–9
-              </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input v-model="options.symbols" type="checkbox" class="h-4 w-4 accent-primary" />
-                符号 !@#$%^&amp;*
-              </label>
+              <p class="text-xs text-muted-foreground">8–64 位，当前 {{ options.length }} 位</p>
             </div>
-          </div>
+          </Transition>
 
-          <label v-if="options.mode === 'random'" class="flex items-center gap-2 text-sm">
-            <input v-model="options.excludeAmbiguous" type="checkbox" class="h-4 w-4 accent-primary" />
-            排除易混淆字符（0 O 1 l I）
-          </label>
-
-          <div v-if="options.mode === 'mnemonic'" class="space-y-2">
-            <label class="flex items-center gap-2 text-sm">
-              词数
-              <select
-                v-model.number="options.mnemonicWords"
-                aria-label="助记词词数"
-                class="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              >
-                <option :value="12">12 词（最常用）</option>
-                <option :value="15">15 词</option>
-                <option :value="18">18 词</option>
-                <option :value="21">21 词</option>
-                <option :value="24">24 词（最安全）</option>
-              </select>
-            </label>
-            <p class="text-xs leading-relaxed text-muted-foreground">
-              BIP39 助记词：2048 个官方标准单词，带校验和，12/24 词是钱包最常用的两种。<span class="max-lg:hidden">助记词就是私钥，谁拿到谁就能动你的币——别截图、别发给别人，抄在纸上收好。</span>
-            </p>
-          </div>
-
-          <div v-if="options.mode === 'number'" class="space-y-3">
-            <div class="flex flex-wrap items-center gap-2 text-sm">
-              <span>范围</span>
-              <input
-                v-model.number="options.numMin"
-                type="number"
-                aria-label="最小值"
-                class="h-8 w-24 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
-              />
-              <span class="text-muted-foreground">到</span>
-              <input
-                v-model.number="options.numMax"
-                type="number"
-                aria-label="最大值"
-                class="h-8 w-24 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
-              />
-            </div>
-            <label class="flex items-center gap-2 text-sm">
-              个数
-              <input
-                v-model.number="options.numCount"
-                type="number"
-                min="1"
-                max="10"
-                step="1"
-                aria-label="随机数个数"
-                class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
-              />
-              <span class="text-xs text-muted-foreground">1–10 个</span>
-            </label>
-            <label class="flex flex-wrap items-center gap-2 text-sm">
-              <input v-model="options.numPad" type="checkbox" class="h-4 w-4 accent-primary" />
-              补零到固定位数
-              <input
-                v-model.number="options.numPadDigits"
-                type="number"
-                min="1"
-                max="10"
-                step="1"
-                :disabled="!options.numPad"
-                aria-label="补零位数"
-                class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums disabled:opacity-50"
-              />
-            </label>
-            <div>
-              <p class="mb-2 text-sm">PIN 码快捷</p>
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  class="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
-                  @click="setPin(4)"
-                >
-                  4 位 PIN
-                </button>
-                <button
-                  type="button"
-                  class="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
-                  @click="setPin(6)"
-                >
-                  6 位 PIN
-                </button>
+          <Transition name="wb-fade" mode="out-in">
+            <div v-if="options.mode === 'random'" class="space-y-2">
+              <p class="text-sm">字符集</p>
+              <div class="grid grid-cols-2 gap-2">
+                <label class="flex items-center gap-2 text-sm">
+                  <input v-model="options.upper" type="checkbox" class="h-4 w-4 accent-primary" />
+                  大写字母 A–Z
+                </label>
+                <label class="flex items-center gap-2 text-sm">
+                  <input v-model="options.lower" type="checkbox" class="h-4 w-4 accent-primary" />
+                  小写字母 a–z
+                </label>
+                <label class="flex items-center gap-2 text-sm">
+                  <input v-model="options.digits" type="checkbox" class="h-4 w-4 accent-primary" />
+                  数字 0–9
+                </label>
+                <label class="flex items-center gap-2 text-sm">
+                  <input v-model="options.symbols" type="checkbox" class="h-4 w-4 accent-primary" />
+                  符号 !@#$%^&amp;*
+                </label>
               </div>
             </div>
-          </div>
+          </Transition>
+
+          <Transition name="wb-fade" mode="out-in">
+            <label v-if="options.mode === 'random'" class="flex items-center gap-2 text-sm">
+              <input v-model="options.excludeAmbiguous" type="checkbox" class="h-4 w-4 accent-primary" />
+              排除易混淆字符（0 O 1 l I）
+            </label>
+          </Transition>
+
+          <Transition name="wb-fade" mode="out-in">
+            <div v-if="options.mode === 'mnemonic'" class="space-y-2">
+              <label class="flex items-center gap-2 text-sm">
+                词数
+                <select
+                  v-model.number="options.mnemonicWords"
+                  aria-label="助记词词数"
+                  class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option :value="12">12 词（最常用）</option>
+                  <option :value="15">15 词</option>
+                  <option :value="18">18 词</option>
+                  <option :value="21">21 词</option>
+                  <option :value="24">24 词（最安全）</option>
+                </select>
+              </label>
+              <p class="text-xs leading-relaxed text-muted-foreground">
+                BIP39 助记词：2048 个官方标准单词，带校验和，12/24 词是钱包最常用的两种。<span class="max-lg:hidden">助记词就是私钥，谁拿到谁就能动你的币——别截图、别发给别人，抄在纸上收好。</span>
+              </p>
+            </div>
+          </Transition>
+
+          <Transition name="wb-fade" mode="out-in">
+            <div v-if="options.mode === 'number'" class="space-y-3">
+              <div class="flex flex-wrap items-center gap-2 text-sm">
+                <span>范围</span>
+                <input
+                  v-model.number="options.numMin"
+                  type="number"
+                  aria-label="最小值"
+                  class="h-8 w-24 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
+                />
+                <span class="text-muted-foreground">到</span>
+                <input
+                  v-model.number="options.numMax"
+                  type="number"
+                  aria-label="最大值"
+                  class="h-8 w-24 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
+                />
+              </div>
+              <label class="flex items-center gap-2 text-sm">
+                个数
+                <input
+                  v-model.number="options.numCount"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  aria-label="随机数个数"
+                  class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums"
+                />
+                <span class="text-xs text-muted-foreground">1–10 个</span>
+              </label>
+              <label class="flex flex-wrap items-center gap-2 text-sm">
+                <input v-model="options.numPad" type="checkbox" class="h-4 w-4 accent-primary" />
+                补零到固定位数
+                <input
+                  v-model.number="options.numPadDigits"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  :disabled="!options.numPad"
+                  aria-label="补零位数"
+                  class="h-8 w-16 rounded-md border border-input bg-background px-2 font-mono text-sm tabular-nums disabled:opacity-50"
+                />
+              </label>
+              <div>
+                <p class="mb-2 text-sm">PIN 码快捷</p>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+                    @click="setPin(4)"
+                  >
+                    4 位 PIN
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+                    @click="setPin(6)"
+                  >
+                    6 位 PIN
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Transition>
 
         </div>
 
         <div
+          v-auto-animate
           class="space-y-2 border-t border-border pt-4 max-lg:order-4 max-lg:rounded-lg max-lg:border max-lg:bg-card max-lg:p-4 max-lg:shadow-sm"
         >
           <h3 class="text-sm font-medium max-lg:hidden">查看我的助记词</h3>
@@ -726,14 +722,14 @@ onUnmounted((): void => {
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
-              class="h-4 w-4 shrink-0 transition-transform"
-              :class="pasteOpen ? 'rotate-180' : ''"
+              class="wb-chevron h-4 w-4 shrink-0"
+              :class="pasteOpen ? 'wb-chevron--open' : ''"
               aria-hidden="true"
             >
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
-          <div :class="pasteOpen ? 'space-y-2' : 'space-y-2 max-lg:hidden'">
+          <div v-if="pasteOpen || isDesktop" class="space-y-2">
             <textarea
               v-model="pasteInput"
               placeholder="粘贴你的助记词，单词之间用空格隔开…"
@@ -772,6 +768,7 @@ onUnmounted((): void => {
         </div>
 
         <div
+          v-auto-animate
           class="space-y-2 border-t border-border pt-4 max-lg:order-4 max-lg:rounded-lg max-lg:border max-lg:bg-card max-lg:p-4 max-lg:shadow-sm"
         >
           <h3 class="text-sm font-medium max-lg:hidden">检查我的密码</h3>
@@ -790,14 +787,14 @@ onUnmounted((): void => {
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
-              class="h-4 w-4 shrink-0 transition-transform"
-              :class="checkOpen ? 'rotate-180' : ''"
+              class="wb-chevron h-4 w-4 shrink-0"
+              :class="checkOpen ? 'wb-chevron--open' : ''"
               aria-hidden="true"
             >
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
-          <div :class="checkOpen ? 'space-y-2' : 'space-y-2 max-lg:hidden'">
+          <div v-if="checkOpen || isDesktop" class="space-y-2">
             <div class="flex gap-2">
               <input
                 v-model="checkInput"
@@ -847,21 +844,7 @@ onUnmounted((): void => {
         class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98] disabled:opacity-70 max-lg:order-2 lg:hidden"
         @click="generate"
       >
-        <svg
-          v-if="generating"
-          class="h-4 w-4 animate-spin"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-          <path
-            class="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
+        <WbSpinner v-if="generating" size="sm" />
         {{ generating ? '生成中…' : '生成' }}
       </button>
 
@@ -874,10 +857,10 @@ onUnmounted((): void => {
         @pointerdown="onDividerPointerDown"
       />
 
-      <!-- 右：结果。手机上紧跟生成按钮（order-3），出现时用 .wb-result-in 淡入（main.css 定义） -->
+      <!-- 右：结果。手机上紧跟生成按钮（order-3）；结果文本每次生成都用 .wb-result-in
+           淡入（输出元素 :key 切换触发，main.css 定义） -->
       <section
-        :key="resultAnimKey"
-        class="wb-result-in min-w-0 flex-1 space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm max-lg:order-3 lg:overflow-y-auto"
+        class="min-w-0 flex-1 space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm max-lg:order-3 lg:overflow-y-auto"
       >
         <!-- 手机端复制主按钮（h-11，全宽）；桌面端用工具栏里的复制按钮 -->
         <button
@@ -898,10 +881,11 @@ onUnmounted((): void => {
 
         <button
           v-if="options.mode !== 'mnemonic'"
+          :key="resultAnimKey"
           type="button"
           :title="options.mode === 'number' ? '点一下复制全部数字' : '点一下复制密码'"
           aria-label="生成的结果，点一下复制"
-          class="block w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-left font-mono text-[13px] leading-relaxed tabular-nums transition-colors hover:bg-muted/70"
+          class="wb-result-in block w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-left font-mono text-[13px] leading-relaxed tabular-nums transition-colors hover:bg-muted/70"
           @click="copyOutput"
         >
           {{ currentOutput || '点「生成」开始' }}
@@ -909,8 +893,9 @@ onUnmounted((): void => {
 
         <div
           v-if="options.mode === 'mnemonic'"
+          :key="resultAnimKey"
           title="点一下复制整组助记词"
-          class="grid cursor-pointer grid-cols-2 gap-2 sm:grid-cols-3"
+          class="wb-result-in grid cursor-pointer grid-cols-2 gap-2 sm:grid-cols-3"
           @click="copyOutput"
         >
           <div
@@ -938,7 +923,7 @@ onUnmounted((): void => {
 
         <div v-if="options.mode !== 'number' && alts.length">
           <p class="mb-2 text-xs text-muted-foreground">备选（点一下换成这个）</p>
-          <div class="space-y-2">
+          <div v-auto-animate class="space-y-2">
             <button
               v-for="(alt, i) in alts"
               :key="i"
@@ -953,7 +938,10 @@ onUnmounted((): void => {
         </div>
 
         <p class="flex items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-          <span :class="statusDotClass" class="inline-block h-2 w-2 shrink-0 rounded-full" />
+          <span
+            :class="[statusDotClass, generating ? 'motion-safe:animate-pulse' : '']"
+            class="inline-block h-2 w-2 shrink-0 rounded-full"
+          />
           {{ status.text }}
           <span class="flex-1" />
           <span class="max-lg:hidden">用浏览器内置的安全随机数生成 · 不上传 · 不保存</span>

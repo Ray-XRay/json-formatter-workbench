@@ -100,7 +100,7 @@ onUnmounted((): void => {
       <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
 
-    <Transition name="brand-menu">
+    <Transition name="wb-menu">
       <div
         v-if="open"
         role="menu"
@@ -125,32 +125,10 @@ onUnmounted((): void => {
           <span
             class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
           >
-            2.0.0-alpha.5
+            2.0.0-alpha.6
           </span>
         </div>
       </div>
     </Transition>
   </div>
 </template>
-
-<style scoped>
-.brand-menu-enter-active,
-.brand-menu-leave-active {
-  transition:
-    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.brand-menu-enter-from,
-.brand-menu-leave-to {
-  opacity: 0;
-  transform: translateY(-4px) scale(0.98);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .brand-menu-enter-active,
-  .brand-menu-leave-active {
-    transition: none;
-  }
-}
-</style>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ChevronDown } from 'lucide-vue-next'
+import CopyButton from './CopyButton.vue'
 import { treeHasMatch } from '../lib/jsonsql/jsonCore'
-import { useToast } from '../composables/useToast'
 import { isRecord, type JsonValue } from '../lib/jsonsql/types'
 
 export interface ToggleSignal {
@@ -17,8 +18,6 @@ const props = defineProps<{
   /** Whether a trailing comma follows this node (not the last sibling). */
   comma?: boolean
 }>()
-
-const { push } = useToast()
 
 const isObj = computed((): boolean => props.value !== null && typeof props.value === 'object')
 
@@ -87,26 +86,6 @@ function toggle(): void {
   expanded.value = !expanded.value
 }
 
-async function copyLeaf(): Promise<void> {
-  const text = String(props.value)
-  try {
-    await navigator.clipboard.writeText(text)
-    push('已复制到剪贴板')
-  } catch {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    document.body.appendChild(ta)
-    ta.select()
-    try {
-      document.execCommand('copy')
-      push('已复制到剪贴板')
-    } catch {
-      push('复制失败，请手动选择复制')
-    }
-    document.body.removeChild(ta)
-  }
-}
-
 function leafClass(v: JsonValue): string {
   if (typeof v === 'string') return 'text-emerald-700 dark:text-emerald-300'
   if (typeof v === 'number') return 'text-orange-700 dark:text-orange-300'
@@ -123,15 +102,15 @@ function leafText(v: JsonValue): string {
 <template>
   <div v-show="visible" class="font-mono text-[13px] leading-6 tabular-nums">
     <template v-if="!isObj">
-      <span
-        class="cursor-pointer rounded px-0.5 hover:bg-accent"
-        title="点击复制该值"
-        @click="copyLeaf"
-      >
+      <span class="group inline-flex items-center gap-1 rounded px-0.5 hover:bg-accent">
         <span v-if="nodeKey !== undefined" class="text-sky-700 dark:text-sky-300">"{{ nodeKey }}"</span>
         <span v-if="nodeKey !== undefined">: </span>
         <span :class="leafClass(value)">{{ leafText(value) }}</span>
         <span v-if="comma">,</span>
+        <CopyButton
+          :text="typeof value === 'string' ? value : String(value)"
+          class="shrink-0 opacity-0 !h-5 !px-1 group-hover:opacity-100 focus-visible:opacity-100"
+        />
       </span>
     </template>
     <template v-else>
@@ -142,7 +121,7 @@ function leafText(v: JsonValue): string {
           :aria-label="expanded ? '折叠' : '展开'"
           @click="toggle"
         >
-          {{ expanded ? '▾' : '▸' }}
+          <ChevronDown class="wb-chevron h-4 w-4" :class="{ 'wb-chevron--open': expanded }" />
         </button>
         <span v-if="nodeKey !== undefined" class="shrink-0 text-sky-700 dark:text-sky-300">"{{ nodeKey }}"</span>
         <span v-if="nodeKey !== undefined" class="shrink-0">: </span>
@@ -150,16 +129,18 @@ function leafText(v: JsonValue): string {
         <span v-if="entries.length === 0">{{ openBracket }}{{ closeBracket }}<span v-if="comma">,</span></span>
         <span v-else>{{ openBracket }}</span>
       </div>
-      <div v-if="entries.length > 0 && expanded" class="ml-5 border-l border-border pl-3">
-        <JsonTreeNode
-          v-for="([k, v], idx) in entries"
-          :key="String(k)"
-          :value="v"
-          :node-key="Array.isArray(value) ? undefined : k"
-          :query="query"
-          :toggle-signal="toggleSignal"
-          :comma="idx < entries.length - 1"
-        />
+      <div v-if="entries.length > 0" v-auto-animate class="ml-5 border-l border-border pl-3">
+        <template v-if="expanded">
+          <JsonTreeNode
+            v-for="([k, v], idx) in entries"
+            :key="String(k)"
+            :value="v"
+            :node-key="Array.isArray(value) ? undefined : k"
+            :query="query"
+            :toggle-signal="toggleSignal"
+            :comma="idx < entries.length - 1"
+          />
+        </template>
       </div>
       <div v-if="entries.length > 0" v-show="expanded" class="ml-5 text-muted-foreground">
         {{ closeBracket }}<span v-if="comma">,</span>
@@ -167,3 +148,12 @@ function leafText(v: JsonValue): string {
     </template>
   </div>
 </template>
+
+<style scoped>
+/* Phase 3：共享 chevron 在减弱动效下不旋转（.wb-chevron 本体在 main.css）。 */
+@media (prefers-reduced-motion: reduce) {
+  .wb-chevron {
+    transition: none;
+  }
+}
+</style>

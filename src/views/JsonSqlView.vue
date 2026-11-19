@@ -1165,10 +1165,11 @@ onUnmounted((): void => {
         >
           更多工具 ▾
         </button>
-        <div
-          v-if="moreOpen"
-          class="absolute left-0 top-full z-30 mt-1 hidden max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-sm shadow-lg lg:block"
-        >
+        <Transition name="wb-menu">
+          <div
+            v-if="moreOpen"
+            class="absolute left-0 top-full z-30 mt-1 hidden max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-sm shadow-lg lg:block"
+          >
           <button type="button" class="more-item" @click="doValidate">验证</button>
           <button
             v-if="isJson"
@@ -1279,14 +1280,17 @@ onUnmounted((): void => {
           <p class="px-2 pb-1 text-xs leading-relaxed text-muted-foreground">
             草稿与历史仅保存在本机浏览器，7 天后过期；关闭后立即删除已存内容。
           </p>
-        </div>
+          </div>
+        </Transition>
 
       <!-- 手机底部抽屉：与桌面下拉框同一份菜单内容，lg: 断点切换显示 -->
-      <div
-        v-if="moreOpen"
-        class="fixed inset-0 z-40 bg-black/50 lg:hidden"
-        @click="moreOpen = false"
-      />
+      <Transition name="wb-overlay">
+        <div
+          v-if="moreOpen"
+          class="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          @click="moreOpen = false"
+        />
+      </Transition>
       <Transition name="more-drawer">
         <div
           v-if="moreOpen"
@@ -1413,7 +1417,8 @@ onUnmounted((): void => {
     </div>
 
     <!-- JSONPath 查询栏 -->
-    <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm max-lg:flex-col max-lg:items-stretch">
+    <Transition name="wb-fade">
+      <div v-if="jpBarOpen" class="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2.5 shadow-sm max-lg:flex-col max-lg:items-stretch">
       <label class="text-sm text-muted-foreground" for="jsonpathInput">JSONPath</label>
       <input
         id="jsonpathInput"
@@ -1432,10 +1437,12 @@ onUnmounted((): void => {
         查询
       </button>
       <span class="text-xs text-muted-foreground">{{ jpMatches.length ? jpMatches.length + ' 个匹配' : '' }}</span>
-    </div>
+      </div>
+    </Transition>
 
     <!-- JSONPath 查询结果 -->
-    <div v-if="jpResultsOpen" class="rounded-lg border border-border bg-card shadow-sm">
+    <Transition name="wb-fade">
+      <div v-if="jpResultsOpen" class="rounded-lg border border-border bg-card shadow-sm">
       <div class="flex items-center justify-between border-b border-border px-3 py-2">
         <span class="text-sm font-medium">
           查询结果 <span class="text-xs font-normal text-muted-foreground">共 {{ jpMatches.length }} 个匹配</span>
@@ -1448,24 +1455,24 @@ onUnmounted((): void => {
           关闭
         </button>
       </div>
-      <div class="max-h-48 overflow-y-auto p-1.5">
+      <div v-auto-animate class="max-h-48 overflow-y-auto p-1.5">
         <div v-if="jpMatches.length === 0" class="px-2 py-3 text-sm text-muted-foreground">没有匹配到任何结果。</div>
-        <button
+        <div
           v-for="(m, idx) in jpMatches"
           :key="idx"
-          type="button"
-          title="点击复制该值"
-          class="flex w-full items-baseline gap-2 rounded px-2 py-1 text-left font-mono text-[13px] transition-colors hover:bg-accent"
-          @click="copyText(JSON.stringify(m.value, null, 2))"
+          class="flex w-full items-center gap-2 rounded px-2 py-1 font-mono text-[13px] transition-colors hover:bg-accent"
         >
           <span class="shrink-0 text-[hsl(var(--code-key))]">{{ m.path }}</span>
-          <span class="min-w-0 truncate text-muted-foreground">{{ jpPreview(m.value) }}</span>
-        </button>
+          <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ jpPreview(m.value) }}</span>
+          <CopyButton :text="JSON.stringify(m.value, null, 2)" class="shrink-0 !h-7 !px-2" />
+        </div>
       </div>
-    </div>
+      </div>
+    </Transition>
 
     <!-- 对比面板 -->
-    <div v-if="diffPanelOpen" class="rounded-lg border border-border bg-card p-3 shadow-sm">
+    <Transition name="wb-fade">
+      <div v-if="diffPanelOpen" class="rounded-lg border border-border bg-card p-3 shadow-sm">
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <span class="text-sm font-medium">对比 JSON</span>
         <span class="text-xs text-muted-foreground max-lg:w-full">左侧输入为第一份，下面粘贴第二份，逐行对比差异</span>
@@ -1495,7 +1502,8 @@ onUnmounted((): void => {
         </button>
         <span class="text-xs text-muted-foreground">{{ diffStats }}</span>
       </div>
-    </div>
+      </div>
+    </Transition>
 
     <!-- 左右分栏 -->
     <div
@@ -1629,7 +1637,8 @@ onUnmounted((): void => {
               ×
             </button>
           </div>
-          <div v-if="diffVisible" ref="diffViewEl" class="wb-result-in p-3 font-mono text-[13px] leading-6 tabular-nums">
+          <Transition name="wb-fade">
+            <div v-if="diffVisible" ref="diffViewEl" class="wb-result-in p-3 font-mono text-[13px] leading-6 tabular-nums">
             <div
               v-for="(op, idx) in diffOps"
               :key="idx"
@@ -1663,6 +1672,7 @@ onUnmounted((): void => {
             ]"
             v-html="outputHtml"
           />
+          </Transition>
         </div>
         <div
           v-if="!wrapOutput && currentView === 'code' && !diffVisible"
@@ -1683,12 +1693,14 @@ onUnmounted((): void => {
     </footer>
 
     <!-- 快捷键设置 -->
-    <div
-      v-if="shortcutOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      @click.self="closeShortcutSettings"
-    >
-      <div role="dialog" aria-modal="true" aria-label="快捷键设置" class="w-full max-w-md rounded-lg border border-border bg-card p-4 shadow-xl">
+    <Transition name="wb-overlay">
+      <div
+        v-if="shortcutOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        @click.self="closeShortcutSettings"
+      >
+        <Transition name="wb-dialog">
+          <div v-if="shortcutOpen" role="dialog" aria-modal="true" aria-label="快捷键设置" class="w-full max-w-md rounded-lg border border-border bg-card p-4 shadow-xl">
         <div class="mb-2 flex items-center justify-between">
           <h2 class="text-base font-semibold">快捷键设置</h2>
           <button
@@ -1730,8 +1742,10 @@ onUnmounted((): void => {
             恢复默认
           </button>
         </div>
+          </div>
+        </Transition>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -1812,17 +1826,33 @@ html[data-theme='dracula'] .wb-c { color: #6272a4; font-style: italic; }
 .pane-btn:hover {
   background-color: hsl(var(--accent));
 }
-/* 手机「更多工具」底部抽屉：上滑出现 220ms easeOutQuint */
+/* 手机「更多工具」底部抽屉：上滑出现（共享动效 token，220ms ease-out） */
 .more-drawer-enter-active,
 .more-drawer-leave-active {
   transition:
-    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    transform var(--wb-dur-drawer, 220ms) var(--wb-ease-out, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--wb-dur-drawer, 220ms) var(--wb-ease-out, cubic-bezier(0.22, 1, 0.36, 1));
 }
 .more-drawer-enter-from,
 .more-drawer-leave-to {
   opacity: 0;
   transform: translateY(32px);
+}
+/* Phase 3：本页新加的共享过渡在减弱动效下全部停用（wb-* 本体在
+ * main.css 里也有对应的 reduce 兜底，这里是本页内的双保险）。 */
+@media (prefers-reduced-motion: reduce) {
+  .wb-menu-enter-active,
+  .wb-menu-leave-active,
+  .wb-overlay-enter-active,
+  .wb-overlay-leave-active,
+  .wb-dialog-enter-active,
+  .wb-dialog-leave-active,
+  .wb-fade-enter-active,
+  .wb-fade-leave-active,
+  .more-drawer-enter-active,
+  .more-drawer-leave-active {
+    transition: none;
+  }
 }
 /* 抽屉里「生成类型」一行：手机上标签独占一行，选择器与生成按钮在下一行 */
 @media (max-width: 1023.5px) {

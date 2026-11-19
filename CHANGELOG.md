@@ -2,6 +2,24 @@
 
 MyWorkbench 2.0 的版本记录。2.0 与 1.x（`json-formatter-workbench` 仓库 main / vue 分支）是不同的技术栈与代码库，版本号从 2.0.0-alpha 起步。
 
+## [2.0.0-alpha.6] - 2026-11-19
+
+Phase 3：整体动画优化 + UI 统一可复用（用户 09:00 追加要求：同一种交互只实现一次、做成共享组件/模式，各页复用）：
+
+- **动效 token 化**：11 个共享变量（`--wb-ease-out/standard/spring` + 8 档时长）收进 main.css `:root`，tailwind.config.js 同步扩展 `duration-wb-*` / `ease-wb-*`；main.css 里按钮/Toast/结果淡入/下拉/复制回弹/路由过渡全部改走 token，数值一字未变；`.theme-transition` 0.25s 与骨架屏 1.1s 脉冲没有对应 token，保持原值。
+- **两个新共享组件**：`WbTabs`（Tab 栏 + 滑动指示器，密码三模式与到站看板巴士↔港铁共用）、`WbSpinner`（唯一的 loading 菊花，三页共用，替代 inline SVG 与 border 圆圈两种写法）。
+- **五个共享过渡**：`wb-menu`（所有下拉菜单进出场：品牌下拉 / 主题下拉 / 桌面「更多工具」统一 180ms）、`wb-overlay`（所有遮罩淡入）、`wb-dialog`（所有弹窗缩放淡入）、`wb-fade`（所有内容交叉淡入）、`wb-chevron`（所有折叠箭头旋转）；折叠与列表统一用 auto-animate；复制反馈统一用 `CopyButton`。
+- **菜单/弹窗补进出场**：桌面「更多工具」下拉、快捷键弹窗、抽屉遮罩补过渡；主题下拉补关闭动画。
+- **折叠区高度动画**：密码/QR 手风琴、到站看板两个 details 改按钮 + auto-animate 折叠，不再瞬间开合。
+- **列表动效**：GS1 参数行、历史记录、JSONPath 匹配、候选路线、方向、最近路线、备选密码，增删有过渡。
+- **模式切换**：密码 Tab、到站看板巴士↔港铁、代码/树形切换全部交叉淡入；备选密码点选触发结果淡入。
+- **生成反馈**：密码与 QR 生成先让出一帧再算，spinner 能真正显示；QR 预览每次生成都重播淡入；强度条移出 `:key` 重建区，宽度动画真正播得出来。
+- **到站看板**：首屏三张卡一次性进场动画（只播一次）；到站时间与备注变化时淡入；分钟数 1→0 变「即到」时单位淡出、布局不跳。
+- **树形**：子节点高度动画；▾/▸ 文字换成旋转 chevron；叶子复制改悬停出现 CopyButton。
+- **reduced-motion 补漏**：命令面板、抽屉、主题切换三处；Tailwind `transition-*` 类纳入全局减弱动效处理；到站看板 `reducedMotion` 改实时监听。
+- **清理**：删 main.css 里重复的 `eta-rise` 与未使用的 `.animate-eta-rise`；删 useGmb.ts 无人绑定的 `stampKey`；卸载 `@vueuse/motion`（装了注册了但全站零使用；auto-animate 保留，本次正式用上）。
+- **已知缺口/偏差**：主题下拉关闭动画按 Radix 模式实现、未在浏览器实测；JSON/SQL 页状态圆点脉冲没做（`StatusKind` 没有 working 态、格式化是同步的，无工作窗口）；JSONPath 匹配行不再整行可点、树叶子点一下不再直接复制（改走 CopyButton）；GMB 按钮菊花 16px→18px、Tab 栏丢了一个 `aria-label`；密码页 Tab 栏视觉从填充按钮改成下划线 + 滑动指示器；结果淡入范围从整卡收窄到结果文字。
+
 ## [2.0.0-alpha.5] - 2026-11-18
 
 移动端重做（方案见 MOBILE-REDESIGN-PLAN.md；桌面端布局与功能原样不动）：
