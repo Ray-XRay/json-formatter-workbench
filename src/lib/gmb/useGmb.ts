@@ -21,7 +21,7 @@ import {
   SRC_LABEL,
   SRC_SHORT,
 } from './api'
-import { MTR_LINES, MTR_LINE_ORDER, MTR_STATIONS, findNearestMtrStation, findStationEntry, mtrStationKey as stationKeyOf, mtrStationName } from './mtrStations'
+import { MTR_LINES, MTR_LINE_ORDER, findNearestMtrStation, findStationEntry } from './mtrStations'
 import { useGmbRoad2Enabled } from '../../composables/useGmbRoad2Enabled'
 import { clearRecent, getRecent, saveRecent } from './recent'
 import { CLEAR_HISTORY_EVENT } from '../../composables/useSettings'
@@ -161,10 +161,12 @@ export function useGmb(): {
   routeTitle: ComputedRef<string>
   routeRegionLabel: ComputedRef<string>
   mtrLineOptions: ComputedRef<{ code: string; name: string }[]>
-  /** 當前車站的全部綫路（站先行：轉車站一次列出，點徽章切綫）。 */
+  /** 當前綫的全部車站（綫先行：車站下拉框只列這一綫的站）。 */
+  mtrLineStations: ComputedRef<{ code: string; name: string }[]>
+  /** 當前車站的全部綫路（轉車站一次列出，點徽章切綫）。 */
   mtrStationLines: ComputedRef<string[]>
-  /** 當前車站的唯一鍵「代碼|站名」（站下拉框的 v-model；設值即選站）。 */
-  mtrStationKey: ComputedRef<string>
+  /** 當前車站的其餘綫路（除當前綫外；單綫站為空，轉車行隱藏）。 */
+  mtrOtherLines: ComputedRef<string[]>
   statusDotClass: ComputedRef<string>
   detailStats: ComputedRef<string>
   srcShort: (src: string) => string
@@ -175,7 +177,8 @@ export function useGmb(): {
   onRecentClick: (entry: RecentEntry) => void
   onDirPick: (key: string) => void
   onStopPick: (seq: number) => void
-  onMtrLineChip: (line: string) => void
+  onMtrLinePick: (line: string) => void
+  onMtrStationPick: (code: string) => void
   onEtaAnimEnd: (index: number) => void
   locateNearest: () => Promise<void>
   loadCurrentEta: () => Promise<void>
@@ -795,33 +798,31 @@ export function useGmb(): {
     MTR_LINE_ORDER.map((code) => ({ code, name: MTR_LINES[code]?.name ?? code })),
   )
 
-  /** 站先行：當前車站所屬的全部綫路（按 MTR_LINE_ORDER），轉車站一次列出。 */
+  /** 當前綫的全部車站（綫先行：車站下拉框只列這一綫的站）。 */
+  const mtrLineStations = computed<{ code: string; name: string }[]>(() =>
+    (MTR_LINES[mtr.value.line]?.stations ?? []).map(([code, name]) => ({ code, name })),
+  )
+
+  /** 綫先行：當前車站所屬的全部綫路（按 MTR_LINE_ORDER），轉車站一次列出。 */
   const mtrStationLines = computed<string[]>(
     () => findStationEntry(mtr.value.sta, mtr.value.line)?.lines ?? [],
   )
 
-  /** 車站下拉框的 v-model（唯一鍵「代碼|站名」，TAW / TSW 代碼重用時不串站）。
-   *  設值 = 選站：站不變綫時保留當前綫，否則自動選該站的第一條綫；
-   *  只有一條綫的站自然就是自動選綫。 */
-  const mtrStationKey = computed<string>({
-    get: () => {
-      const entry = findStationEntry(mtr.value.sta, mtr.value.line)
-      return entry
-        ? stationKeyOf(entry.code, entry.name)
-        : `${mtr.value.sta}|${mtrStationName(mtr.value.line, mtr.value.sta)}`
-    },
-    set: (key: string) => {
-      const entry = MTR_STATIONS.find((s) => stationKeyOf(s.code, s.name) === key)
-      if (!entry) return
-      nearestInfo.value = ''
-      mtr.value.sta = entry.code
-      if (!entry.lines.includes(mtr.value.line)) {
-        mtr.value.line = entry.lines[0]
-      }
-      mtr.value.dir = 'UP'
-      void mtrLoadEta()
-    },
-  })
+  /** 當前車站除當前綫外的其餘綫路（轉車行用；單綫站為空）。 */
+  const mtrOtherLines = computed<string[]>(() =>
+    mtrStationLines.value.filter((line) => line !== mtr.value.line),
+  )
+
+  /** 車站下拉框選站（只在當前綫內）：站變了方向回 UP、重查班次。 */
+  function onMtrStationPick(code: string): void {
+    const line = MTR_LINES[mtr.value.line]
+    if (!line || code === mtr.value.sta) return
+    if (!line.stations.some(([c]) => c === code)) return
+    nearestInfo.value = ''
+    mtr.value.sta = code
+    mtr.value.dir = 'UP'
+    void mtrLoadEta()
+  }
 
   const mtrDirOptions = computed<DirItem[]>(() => {
     const line = MTR_LINES[mtr.value.line]
@@ -860,13 +861,22 @@ export function useGmb(): {
   }
 
 
-  /* ---------- 港鐵：站先行 ---------- */
-  /** 點綫路徽章切綫：只在該站有停的綫之間切，站不變、方向回 UP。 */
-  function onMtrLineChip(line: string): void {
-    const entry = findStationEntry(mtr.value.sta, mtr.value.line)
-    if (!entry || !entry.lines.includes(line) || line === mtr.value.line) return
+  /* ---------- 港鐵：綫先行 ---------- */
+  /** 點綫路徽章切綫（上方 10 綫與轉車行共用）：當前站在新綫上有停
+   *  （按「代碼|站名」比對，TAW 太古／大圍、TSW 荃灣／荃灣西不串站）
+   *  就保留該站，否則落到新綫首站；方向回 UP、重查班次。 */
+  function onMtrLinePick(line: string): void {
+    const next = MTR_LINES[line]
+    if (!next || line === mtr.value.line) return
+    const cur = findStationEntry(mtr.value.sta, mtr.value.line)
+    const keepsStation =
+      cur !== undefined &&
+      next.stations.some(([code, name]) => code === cur.code && name === cur.name)
     nearestInfo.value = ''
     mtr.value.line = line
+    if (!keepsStation) {
+      mtr.value.sta = next.stations.length ? next.stations[0][0] : ''
+    }
     mtr.value.dir = 'UP'
     void mtrLoadEta()
   }
@@ -1132,8 +1142,9 @@ export function useGmb(): {
     routeTitle,
     routeRegionLabel,
     mtrLineOptions,
+    mtrLineStations,
     mtrStationLines,
-    mtrStationKey,
+    mtrOtherLines,
     statusDotClass: roadA.statusDotClass,
     detailStats: roadA.detailStats,
     srcShort,
@@ -1144,7 +1155,8 @@ export function useGmb(): {
     onRecentClick,
     onDirPick,
     onStopPick,
-    onMtrLineChip,
+    onMtrLinePick,
+    onMtrStationPick,
     onEtaAnimEnd: roadA.onEtaAnimEnd,
     locateNearest,
     loadCurrentEta,

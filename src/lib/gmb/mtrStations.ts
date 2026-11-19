@@ -31,7 +31,7 @@ export const MTR_LINES: Record<string, MtrLine> = {
 
 export const MTR_LINE_ORDER: string[] = ['TWL', 'KTL', 'ISL', 'TCL', 'TKL', 'EAL', 'TML', 'SIL', 'DRL', 'AEX']
 
-/** 車站→綫路反查表（站先行 UI 用）：由 line→stations 反轉而來。
+/** 車站→綫路反查表（轉車站綫路反查用）：由 line→stations 反轉而來。
  *  轉車站（如金鐘、鑽石山、大圍）只列一次，lines 按 MTR_LINE_ORDER 排列；
  *  代碼重用的站（TAW 太古／大圍、TSW 荃灣／荃灣西）以「代碼|站名」區分，
  *  順序按各綫首次出現（荃灣綫在前，餘綫照 MTR_LINE_ORDER）。 */

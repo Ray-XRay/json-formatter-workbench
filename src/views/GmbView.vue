@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
-import { LocateFixed, RotateCcw } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
+import { ChevronDown, LocateFixed, RotateCcw } from 'lucide-vue-next'
 import WbDragBlock from '../components/WbDragBlock.vue'
 import WbSpinner from '../components/WbSpinner.vue'
 import WbTabs from '../components/WbTabs.vue'
@@ -10,11 +10,9 @@ import type { WbTab } from '../components/WbTabs.vue'
 import { useGmb } from '../lib/gmb/useGmb'
 import {
   MTR_LINE_COLORS,
-  MTR_STATIONS,
   findStationEntry,
   lineChipText,
-  mtrStationKey as stationKeyOf,
-  type MtrStationEntry,
+  mtrStationName,
 } from '../lib/gmb/mtrStations'
 import { useGmbRoad2Enabled } from '../composables/useGmbRoad2Enabled'
 
@@ -44,8 +42,9 @@ const {
   stopSeqModel,
   routeRegionLabel,
   mtrLineOptions,
+  mtrLineStations,
   mtrStationLines,
-  mtrStationKey,
+  mtrOtherLines,
   statusDotClass,
   detailStats,
   srcShort,
@@ -56,7 +55,8 @@ const {
   onRecentClick,
   onDirPick,
   onStopPick,
-  onMtrLineChip,
+  onMtrLinePick,
+  onMtrStationPick,
   onEtaAnimEnd,
   locateNearest,
   refreshNow,
@@ -258,22 +258,51 @@ function mtrLineName(code: string): string {
   return mtrLineOptions.value.find((l) => l.code === code)?.name ?? code
 }
 
-/** 車站搜尋：按站名或代碼過濾 98 站下拉框；當前站不在過濾結果裡時
- *  補在最前面，選中的站永遠可見。選站後清空搜尋、恢復完整列表。 */
-const mtrStationQuery = ref('')
-const filteredMtrStations = computed((): MtrStationEntry[] => {
-  const q = mtrStationQuery.value.trim().toLowerCase()
-  const list = !q
-    ? MTR_STATIONS
-    : MTR_STATIONS.filter(
-        (s) => s.name.includes(q) || s.code.toLowerCase().includes(q),
-      )
-  const cur = findStationEntry(mtr.value.sta, mtr.value.line)
-  if (cur && !list.some((s) => s.code === cur.code && s.name === cur.name)) {
-    return [cur, ...list]
-  }
-  return list
+/** 當前站名（按當前綫查；代碼重用的站以綫區分，TAW 太古／大圍不串站）。 */
+const mtrCurrentStationName = computed((): string =>
+  mtrStationName(mtr.value.line, mtr.value.sta),
+)
+
+/** 某站的全部綫路色點（轉車站一眼看到所有綫；單綫站只有自己的色）。 */
+function mtrStationDots(code: string): string[] {
+  return findStationEntry(code, mtr.value.line)?.lines ?? [mtr.value.line]
+}
+
+/** 車站下拉框：原生 <select> 的選項裡畫不出色點，改自訂按鈕 + 下拉列表。
+ *  列表只列當前綫的站，每行前面是該站全部綫路的彩色圓點；頂部小搜尋
+ *  只過濾當前綫的站。點選站、點空白處、按 Esc 都關下拉。 */
+const mtrStationMenuOpen = ref(false)
+const mtrStationFilter = ref('')
+const mtrStationFilterInput = ref<HTMLInputElement | null>(null)
+const filteredMtrLineStations = computed((): { code: string; name: string }[] => {
+  const q = mtrStationFilter.value.trim().toLowerCase()
+  if (!q) return mtrLineStations.value
+  return mtrLineStations.value.filter(
+    (s) => s.name.includes(q) || s.code.toLowerCase().includes(q),
+  )
 })
+
+function toggleMtrStationMenu(): void {
+  mtrStationMenuOpen.value = !mtrStationMenuOpen.value
+  if (mtrStationMenuOpen.value) {
+    void nextTick(() => mtrStationFilterInput.value?.focus())
+  }
+}
+
+function closeMtrStationMenu(): void {
+  mtrStationMenuOpen.value = false
+  mtrStationFilter.value = ''
+}
+
+function onMtrStationSelect(code: string): void {
+  onMtrStationPick(code)
+  closeMtrStationMenu()
+}
+
+function onMtrLineSelect(line: string): void {
+  onMtrLinePick(line)
+  closeMtrStationMenu()
+}
 
 /** 綫路徽章：官方底色 + 對比文字色；當前綫描邊高亮、其餘半透明。 */
 function mtrLineChipClass(code: string): string {
@@ -309,7 +338,7 @@ const selectClass =
         </button>
       </div>
       <p class="text-sm text-muted-foreground">
-        小巴、巴士、港鐵實時到站：輸路線號碼、選方向、選站，即見下三班車；港鐵先選站、再點綫路徽章切綫。
+        小巴、巴士、港鐵實時到站：輸路線號碼、選方向、選站，即見下三班車；港鐵先選綫、再選站，轉車站點綫路徽章切綫。
       </p>
     </header>
 
@@ -378,7 +407,7 @@ const selectClass =
           </span>
         </div>
 
-        <!-- 港鐵：先選站，再點綫路徽章切綫 -->
+        <!-- 港鐵：先選綫，再選站；轉車站點綫路徽章切綫 -->
         <div v-else key="mtr" class="space-y-3">
           <!-- 找最近車站：只在點按鈕時請求定位權限；授權過且開關開著時，進港鐵模式自動定位一次 -->
           <div class="flex flex-wrap items-center gap-2">
@@ -414,35 +443,116 @@ const selectClass =
           <p class="text-xs text-muted-foreground">
             位置只在瀏覽器本地計算最近車站，不會上傳。
           </p>
-          <!-- 選站：搜尋 + 下拉框（98 站）；選站後自動選綫（單綫站直接定綫，
-               轉車站保留當前綫、沒有才取第一條） -->
+          <!-- 先選綫：10 條綫一次列出，官方路線圖顏色；當前綫描邊高亮、其餘半透明。
+               切綫時當前站若在新綫上有停就保留，否則落到新綫首站。 -->
+          <div
+            class="flex flex-wrap items-center gap-2"
+            role="tablist"
+            aria-label="綫路"
+          >
+            <span class="text-xs text-muted-foreground">綫路</span>
+            <button
+              v-for="line in mtrLineOptions"
+              :key="line.code"
+              type="button"
+              role="tab"
+              :aria-selected="mtr.line === line.code"
+              :class="mtrLineChipClass(line.code)"
+              :style="{
+                backgroundColor: MTR_LINE_COLORS[line.code] ?? '#888888',
+                color: lineChipText(line.code),
+              }"
+              @click="onMtrLineSelect(line.code)"
+            >
+              {{ line.name }}
+            </button>
+          </div>
+          <!-- 再選站：只列當前綫的站。原生 select 的選項畫不出色點，改自訂下拉：
+               每行前面是該站全部綫路的彩色圓點（轉車站一眼看到所有綫），
+               頂部小搜尋只過濾當前綫的站。 -->
           <div class="flex flex-wrap items-center gap-2">
-            <label class="flex items-center gap-2 text-sm">
-              站
-              <select
-                v-model="mtrStationKey"
+            <div class="relative" @keydown.escape="closeMtrStationMenu">
+              <button
+                type="button"
+                aria-haspopup="listbox"
+                :aria-expanded="mtrStationMenuOpen"
                 aria-label="港鐵站"
                 :class="selectClass"
-                @change="mtrStationQuery = ''"
+                class="flex items-center gap-2 pr-2"
+                @click="toggleMtrStationMenu"
               >
-                <option
-                  v-for="s in filteredMtrStations"
-                  :key="stationKeyOf(s.code, s.name)"
-                  :value="stationKeyOf(s.code, s.name)"
-                >
-                  {{ s.name }} · {{ s.code }}
-                </option>
-              </select>
-            </label>
-            <input
-              v-model="mtrStationQuery"
-              type="text"
-              placeholder="搜尋站名或代碼…"
-              aria-label="搜尋港鐵站"
-              spellcheck="false"
-              :class="inputClass"
-              class="w-40"
-            />
+                <span class="flex items-center gap-1" aria-hidden="true">
+                  <span
+                    v-for="code in mtrStationLines"
+                    :key="code"
+                    class="inline-block h-2 w-2 rounded-full"
+                    :style="{ backgroundColor: MTR_LINE_COLORS[code] ?? '#888888' }"
+                  />
+                </span>
+                <span class="font-medium">{{ mtrCurrentStationName }} · {{ mtr.sta }}</span>
+                <ChevronDown
+                  class="h-4 w-4 shrink-0 text-muted-foreground transition-transform"
+                  :class="{ 'rotate-180': mtrStationMenuOpen }"
+                />
+              </button>
+              <div
+                v-if="mtrStationMenuOpen"
+                class="absolute left-0 z-20 mt-1 w-64 rounded-md border border-border bg-popover shadow-lg"
+              >
+                <div class="border-b border-border p-2">
+                  <input
+                    ref="mtrStationFilterInput"
+                    v-model="mtrStationFilter"
+                    type="text"
+                    placeholder="搜尋站名或代碼…"
+                    aria-label="搜尋本站綫車站"
+                    spellcheck="false"
+                    :class="inputClass"
+                    class="w-full"
+                  />
+                </div>
+                <div role="listbox" aria-label="港鐵站" class="max-h-72 overflow-y-auto p-1">
+                  <p
+                    v-if="!filteredMtrLineStations.length"
+                    class="px-2.5 py-2 text-sm text-muted-foreground"
+                  >
+                    沒有符合的站
+                  </p>
+                  <button
+                    v-for="s in filteredMtrLineStations"
+                    :key="s.code"
+                    type="button"
+                    role="option"
+                    :aria-selected="s.code === mtr.sta"
+                    class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    :class="s.code === mtr.sta ? 'bg-accent font-medium' : ''"
+                    @click="onMtrStationSelect(s.code)"
+                  >
+                    <span class="flex shrink-0 items-center gap-1" aria-hidden="true">
+                      <span
+                        v-for="code in mtrStationDots(s.code)"
+                        :key="code"
+                        class="inline-block h-2 w-2 rounded-full"
+                        :style="{
+                          backgroundColor: MTR_LINE_COLORS[code] ?? '#888888',
+                        }"
+                      />
+                    </span>
+                    <span class="flex-1">{{ s.name }}</span>
+                    <span class="text-xs text-muted-foreground">{{ s.code }}</span>
+                  </button>
+                </div>
+              </div>
+              <!-- 點空白處關下拉（透明遮罩蓋住全屏，下拉本身 z-20 在遮罩之上） -->
+              <button
+                v-if="mtrStationMenuOpen"
+                type="button"
+                aria-hidden="true"
+                tabindex="-1"
+                class="fixed inset-0 z-10 cursor-default"
+                @click="closeMtrStationMenu"
+              />
+            </div>
             <button
               type="button"
               title="重新查一次班次"
@@ -454,28 +564,29 @@ const selectClass =
               {{ refreshing ? '刷新中…' : '刷新' }}
             </button>
           </div>
-          <!-- 綫路徽章：該站全部綫路一次列出，官方路線圖顏色，點一下切綫看班次。
+          <!-- 轉車：該站的其他綫路，官方路線圖顏色，點一下切綫看班次（站不變）。
+               單綫站沒有其他綫路，這一行不顯示。
                每條綫的下一班在下方「下三班車」；徽章裡不另塞分鐘數（多綫轉車站
                要多查幾次 API，版式也擠），點徽章切綫就夠。 -->
           <div
-            v-if="mtrStationLines.length"
+            v-if="mtrOtherLines.length"
             class="flex flex-wrap items-center gap-2"
             role="tablist"
-            aria-label="綫路"
+            aria-label="轉車綫路"
           >
-            <span class="text-xs text-muted-foreground">綫路</span>
+            <span class="text-xs text-muted-foreground">轉車</span>
             <button
-              v-for="code in mtrStationLines"
+              v-for="code in mtrOtherLines"
               :key="code"
               type="button"
               role="tab"
-              :aria-selected="mtr.line === code"
+              :aria-selected="false"
               :class="mtrLineChipClass(code)"
               :style="{
                 backgroundColor: MTR_LINE_COLORS[code] ?? '#888888',
                 color: lineChipText(code),
               }"
-              @click="onMtrLineChip(code)"
+              @click="onMtrLineSelect(code)"
             >
               {{ mtrLineName(code) }}
             </button>
@@ -879,7 +990,7 @@ const selectClass =
       <div v-auto-animate>
         <p v-if="showHelp" class="mt-2 text-xs leading-relaxed text-muted-foreground">
           巴士 / 小巴：輸路線號碼，同一個編號有多條路線時（例如 1
-          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換。港鐵先選站，再點綫路徽章切綫看班次，轉車站的全部綫路一次列出。想同時查另一條路線（換乘），在設定裡打開「第二條路線」。數據：運輸署
+          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換。港鐵先選綫、再選站，轉車站每行前面有全部綫路的色點，下方「轉車」一點就切綫看班次。想同時查另一條路線（換乘），在設定裡打開「第二條路線」。數據：運輸署
           / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。
         </p>
       </div>
