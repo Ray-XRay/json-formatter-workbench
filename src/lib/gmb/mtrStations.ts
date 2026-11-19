@@ -31,6 +31,49 @@ export const MTR_LINES: Record<string, MtrLine> = {
 
 export const MTR_LINE_ORDER: string[] = ['TWL', 'KTL', 'ISL', 'TCL', 'TKL', 'EAL', 'TML', 'SIL', 'DRL', 'AEX']
 
+/** 車站→綫路反查表（站先行 UI 用）：由 line→stations 反轉而來。
+ *  轉車站（如金鐘、鑽石山、大圍）只列一次，lines 按 MTR_LINE_ORDER 排列；
+ *  代碼重用的站（TAW 太古／大圍、TSW 荃灣／荃灣西）以「代碼|站名」區分，
+ *  順序按各綫首次出現（荃灣綫在前，餘綫照 MTR_LINE_ORDER）。 */
+export interface MtrStationEntry {
+  code: string
+  name: string
+  lat: number
+  lng: number
+  lines: string[]
+}
+
+export function mtrStationKey(code: string, name: string): string {
+  return `${code}|${name}`
+}
+
+export const MTR_STATIONS: MtrStationEntry[] = (() => {
+  const map = new Map<string, MtrStationEntry>()
+  for (const line of MTR_LINE_ORDER) {
+    const def = MTR_LINES[line]
+    if (!def) continue
+    for (const [code, name, lat, lng] of def.stations) {
+      const key = mtrStationKey(code, name)
+      const existing = map.get(key)
+      if (existing) {
+        if (!existing.lines.includes(line)) existing.lines.push(line)
+      } else {
+        map.set(key, { code, name, lat, lng, lines: [line] })
+      }
+    }
+  }
+  return [...map.values()]
+})()
+
+/** 按代碼找站：優先取當前綫有停的那一站（TAW / TSW 代碼重用時才有歧義）。 */
+export function findStationEntry(code: string, line?: string): MtrStationEntry | undefined {
+  return (
+    MTR_STATIONS.find(
+      (e) => e.code === code && (line === undefined || e.lines.includes(line)),
+    ) ?? MTR_STATIONS.find((e) => e.code === code)
+  )
+}
+
 /** 港鐵各綫官方路線圖顏色（英文維基百科各綫條目 infobox「Color on map」欄位核對）。
  *  只做品牌點綴用：綫路徽章、色點、結果卡左邊框、當前綫高亮；絕不用作正文顏色或版面底色。 */
 export const MTR_LINE_COLORS: Record<string, string> = {

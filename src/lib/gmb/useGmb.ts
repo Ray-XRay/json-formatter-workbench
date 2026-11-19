@@ -21,7 +21,8 @@ import {
   SRC_LABEL,
   SRC_SHORT,
 } from './api'
-import { MTR_LINES, MTR_LINE_ORDER, findNearestMtrStation, mtrStationName } from './mtrStations'
+import { MTR_LINES, MTR_LINE_ORDER, MTR_STATIONS, findNearestMtrStation, findStationEntry, mtrStationKey as stationKeyOf, mtrStationName } from './mtrStations'
+import { useGmbRoad2Enabled } from '../../composables/useGmbRoad2Enabled'
 import { clearRecent, getRecent, saveRecent } from './recent'
 import { CLEAR_HISTORY_EVENT } from '../../composables/useSettings'
 import type {
@@ -160,7 +161,10 @@ export function useGmb(): {
   routeTitle: ComputedRef<string>
   routeRegionLabel: ComputedRef<string>
   mtrLineOptions: ComputedRef<{ code: string; name: string }[]>
-  mtrStations: ComputedRef<[string, string, number, number][]>
+  /** 當前車站的全部綫路（站先行：轉車站一次列出，點徽章切綫）。 */
+  mtrStationLines: ComputedRef<string[]>
+  /** 當前車站的唯一鍵「代碼|站名」（站下拉框的 v-model；設值即選站）。 */
+  mtrStationKey: ComputedRef<string>
   statusDotClass: ComputedRef<string>
   detailStats: ComputedRef<string>
   srcShort: (src: string) => string
@@ -171,8 +175,7 @@ export function useGmb(): {
   onRecentClick: (entry: RecentEntry) => void
   onDirPick: (key: string) => void
   onStopPick: (seq: number) => void
-  onMtrLineChange: () => void
-  onMtrStationChange: () => void
+  onMtrLineChip: (line: string) => void
   onEtaAnimEnd: (index: number) => void
   locateNearest: () => Promise<void>
   loadCurrentEta: () => Promise<void>
@@ -182,6 +185,7 @@ export function useGmb(): {
 } {
   const route = useRoute()
   const { push } = useToast()
+  const { road2Enabled } = useGmbRoad2Enabled()
 
   /* ---------- 狀態 ---------- */
   const mode = ref<Mode>('road')
@@ -791,9 +795,33 @@ export function useGmb(): {
     MTR_LINE_ORDER.map((code) => ({ code, name: MTR_LINES[code]?.name ?? code })),
   )
 
-  const mtrStations = computed<[string, string, number, number][]>(
-    () => MTR_LINES[mtr.value.line]?.stations ?? [],
+  /** 站先行：當前車站所屬的全部綫路（按 MTR_LINE_ORDER），轉車站一次列出。 */
+  const mtrStationLines = computed<string[]>(
+    () => findStationEntry(mtr.value.sta, mtr.value.line)?.lines ?? [],
   )
+
+  /** 車站下拉框的 v-model（唯一鍵「代碼|站名」，TAW / TSW 代碼重用時不串站）。
+   *  設值 = 選站：站不變綫時保留當前綫，否則自動選該站的第一條綫；
+   *  只有一條綫的站自然就是自動選綫。 */
+  const mtrStationKey = computed<string>({
+    get: () => {
+      const entry = findStationEntry(mtr.value.sta, mtr.value.line)
+      return entry
+        ? stationKeyOf(entry.code, entry.name)
+        : `${mtr.value.sta}|${mtrStationName(mtr.value.line, mtr.value.sta)}`
+    },
+    set: (key: string) => {
+      const entry = MTR_STATIONS.find((s) => stationKeyOf(s.code, s.name) === key)
+      if (!entry) return
+      nearestInfo.value = ''
+      mtr.value.sta = entry.code
+      if (!entry.lines.includes(mtr.value.line)) {
+        mtr.value.line = entry.lines[0]
+      }
+      mtr.value.dir = 'UP'
+      void mtrLoadEta()
+    },
+  })
 
   const mtrDirOptions = computed<DirItem[]>(() => {
     const line = MTR_LINES[mtr.value.line]
@@ -821,10 +849,8 @@ export function useGmb(): {
   )
 
   const routeRegionLabel = computed<string>(() => {
-    if (mode.value === 'mtr') {
-      const line = MTR_LINES[mtr.value.line]
-      return line ? `${line.name} · ${mtrStationName(mtr.value.line, mtr.value.sta)}` : ''
-    }
+    // 港鐵：站下拉框 + 綫路徽章已經顯示站與綫，不再重複
+    if (mode.value === 'mtr') return ''
     return roadA.routeRegionLabel.value
   })
 
@@ -834,19 +860,14 @@ export function useGmb(): {
   }
 
 
-  /* ---------- 港鐵 ---------- */
-  function onMtrLineChange(): void {
+  /* ---------- 港鐵：站先行 ---------- */
+  /** 點綫路徽章切綫：只在該站有停的綫之間切，站不變、方向回 UP。 */
+  function onMtrLineChip(line: string): void {
+    const entry = findStationEntry(mtr.value.sta, mtr.value.line)
+    if (!entry || !entry.lines.includes(line) || line === mtr.value.line) return
     nearestInfo.value = ''
+    mtr.value.line = line
     mtr.value.dir = 'UP'
-    const line = MTR_LINES[mtr.value.line]
-    if (line && !line.stations.some(([code]) => code === mtr.value.sta)) {
-      mtr.value.sta = line.stations.length ? line.stations[0][0] : ''
-    }
-    void mtrLoadEta()
-  }
-
-  function onMtrStationChange(): void {
-    nearestInfo.value = ''
     void mtrLoadEta()
   }
 
@@ -937,9 +958,10 @@ export function useGmb(): {
   async function loadCurrentEta(): Promise<void> {
     if (mode.value === 'mtr') await mtrLoadEta()
     else {
-      // 巴士 · 小巴模式：兩條路線同一個 30 秒 tick 一起刷新
+      // 巴士 · 小巴模式：兩條路線同一個 30 秒 tick 一起刷新；
+      // 第二條路線只在設定裡打開時才刷新（關掉時區塊隱藏、不查）
       await roadA.loadCurrentEta()
-      await roadB.loadCurrentEta()
+      if (road2Enabled.value) await roadB.loadCurrentEta()
     }
   }
 
@@ -1110,7 +1132,8 @@ export function useGmb(): {
     routeTitle,
     routeRegionLabel,
     mtrLineOptions,
-    mtrStations,
+    mtrStationLines,
+    mtrStationKey,
     statusDotClass: roadA.statusDotClass,
     detailStats: roadA.detailStats,
     srcShort,
@@ -1121,8 +1144,7 @@ export function useGmb(): {
     onRecentClick,
     onDirPick,
     onStopPick,
-    onMtrLineChange,
-    onMtrStationChange,
+    onMtrLineChip,
     onEtaAnimEnd: roadA.onEtaAnimEnd,
     locateNearest,
     loadCurrentEta,

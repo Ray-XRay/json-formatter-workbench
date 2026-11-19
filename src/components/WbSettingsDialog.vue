@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { dispatchClearHistory, useSettings, type ClearScope } from '../composables/useSettings'
+import { useGmbRoad2Enabled } from '../composables/useGmbRoad2Enabled'
 import { useShortcuts } from '../composables/useShortcuts'
 import { useToast } from '../composables/useToast'
 import { clearDraft, clearHistory as clearJsonHistory } from '../lib/jsonsql/storage'
@@ -11,6 +12,7 @@ import { clearRecent } from '../lib/gmb/recent'
 const route = useRoute()
 const { isOpen, close } = useSettings()
 const { push } = useToast()
+const { road2Enabled } = useGmbRoad2Enabled()
 const {
   shortcuts,
   listeningId,
@@ -168,6 +170,27 @@ watch(isOpen, (open: boolean): void => {
           <p v-if="clearArmed" class="mb-4 text-xs text-red-500">
             将清除全部工具的历史记录与草稿（JSON 草稿、二维码历史、最近路线），再点一次确认。
           </p>
+
+          <template v-if="tool === 'gmb'">
+            <h3 class="mb-1.5 text-sm font-medium">到站看板</h3>
+            <label class="mb-4 flex cursor-pointer items-start gap-2.5">
+              <span class="relative mt-0.5 inline-flex shrink-0">
+                <input v-model="road2Enabled" type="checkbox" class="peer sr-only" />
+                <span
+                  class="block h-5 w-9 rounded-full bg-muted transition-colors peer-checked:bg-primary"
+                />
+                <span
+                  class="pointer-events-none absolute left-0.5 top-0.5 block h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"
+                />
+              </span>
+              <span>
+                <span class="block text-sm">第二條路線（換乘）</span>
+                <span class="block text-xs text-muted-foreground">
+                  在看板上顯示第二條路線區塊，同時查另一條路線，方便轉車。關掉後區塊完全隱藏，拖拽位置保留。
+                </span>
+              </span>
+            </label>
+          </template>
 
           <template v-if="tool === 'json-sql'">
             <h3 class="mb-1.5 text-sm font-medium">快捷键设置</h3>

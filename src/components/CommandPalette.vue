@@ -13,7 +13,7 @@ import { Braces, BusFront, Check, KeyRound, Monitor, QrCode, Settings } from 'lu
 import { useCommandPalette } from '../composables/useCommandPalette'
 import { useSettings } from '../composables/useSettings'
 import { useShortcuts } from '../composables/useShortcuts'
-import { FAMILIES, useTheme, type FamilyId, type ThemeFamily } from '../composables/useTheme'
+import { FAMILIES, isSignatureFamily, useTheme, type FamilyId, type ThemeFamily } from '../composables/useTheme'
 
 interface PaletteAction {
   label: string
@@ -33,7 +33,7 @@ const router = useRouter()
 const { isOpen, close } = useCommandPalette()
 const { open: openSettings } = useSettings()
 const { shortcutLabel } = useShortcuts()
-const { family, followSystem, setFamily, setFollowSystem, variantMetaOf } = useTheme()
+const { family, variants, followSystem, setFamily, setFollowSystem, toggleVariant, variantMetaOf } = useTheme()
 
 const query = ref('')
 const activeIndex = ref(0)
@@ -79,22 +79,47 @@ const toolActions: PaletteAction[] = [
 ]
 
 /* 6 个主题族 + 1 个跟随系统开关（不列 4 个浅色 id 为独立动作）。
- *  computed：行内色块跟当前变体走，开关文案跟跟随状态走。 */
+ *  computed：行内色块跟当前变体走，开关文案跟跟随状态走。
+ *  点击语义与主题菜单（ThemeMenu.vue 的 onFamilyClick）完全一致：
+ *  - 未选中的族：选中它（手动选择会关闭跟随系统）；
+ *  - 已选中的特色族：切换它的深/浅变体（同样关闭跟随系统），
+ *    标签直接写明将切换到的变体；
+ *  - 已选中的纯浅/深色族：确认手动选择（只关闭跟随系统）。 */
 const themeActions = computed<PaletteAction[]>(() => [
-  ...FAMILIES.map(
-    (f: ThemeFamily): PaletteAction => ({
-      label: `${f.label}主题`,
-      keywords: `主题 ${f.nameEn.toLowerCase()} ${f.label}`,
+  ...FAMILIES.map((f: ThemeFamily): PaletteAction => {
+    const isActive = f.id === family.value
+    let label = `${f.label}主题`
+    let keywords = `主题 ${f.nameEn.toLowerCase()} ${f.label}`
+    let run: () => void
+    if (!isActive) {
+      run = (): void => {
+        setFamily(f.id)
+      }
+    } else if (isSignatureFamily(f.id)) {
+      // 切换后生效的变体 = 当前已存变体的反面（toggleVariant 翻转的
+      // 正是已存变体；跟随系统时显示的 OS 派生变体不参与计算）。
+      const target = variants.value[f.id] === 'dark' ? '浅色' : '深色'
+      label = `${f.label}主题 · 切换为${target}`
+      keywords += ' 切换 深浅'
+      run = (): void => {
+        toggleVariant()
+      }
+    } else {
+      run = (): void => {
+        setFollowSystem(false)
+      }
+    }
+    return {
+      label,
+      keywords,
       hint: f.nameEn,
       icon: null,
       swatchBg: variantMetaOf(f.id).swatchBg,
       swatchAccent: variantMetaOf(f.id).swatchAccent,
       family: f.id,
-      run: (): void => {
-        setFamily(f.id)
-      },
-    }),
-  ),
+      run,
+    }
+  }),
   {
     label: followSystem.value ? '关闭跟随系统' : '跟随系统',
     keywords: '跟随 系统 主题 system',

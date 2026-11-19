@@ -8,7 +8,15 @@ import { useBlockLayout } from '../composables/useBlockLayout'
 import { useToast } from '../composables/useToast'
 import type { WbTab } from '../components/WbTabs.vue'
 import { useGmb } from '../lib/gmb/useGmb'
-import { MTR_LINE_COLORS, lineChipText } from '../lib/gmb/mtrStations'
+import {
+  MTR_LINE_COLORS,
+  MTR_STATIONS,
+  findStationEntry,
+  lineChipText,
+  mtrStationKey as stationKeyOf,
+  type MtrStationEntry,
+} from '../lib/gmb/mtrStations'
+import { useGmbRoad2Enabled } from '../composables/useGmbRoad2Enabled'
 
 const {
   mode,
@@ -36,7 +44,8 @@ const {
   stopSeqModel,
   routeRegionLabel,
   mtrLineOptions,
-  mtrStations,
+  mtrStationLines,
+  mtrStationKey,
   statusDotClass,
   detailStats,
   srcShort,
@@ -47,8 +56,7 @@ const {
   onRecentClick,
   onDirPick,
   onStopPick,
-  onMtrLineChange,
-  onMtrStationChange,
+  onMtrLineChip,
   onEtaAnimEnd,
   locateNearest,
   refreshNow,
@@ -81,7 +89,9 @@ const {
 } = road2
 
 /** 區塊布局（Phase 4 可拖拽試點）：5 個區塊，預設順序 = 舊版式自上而下。
- *  頁頭固定不參與；road2 / stops 只在 road 模式顯示，切模式時在完整
+ *  頁頭固定不參與；road2 / stops 只在 road 模式顯示，road2 還要設定裡的
+ *  「第二條路線（換乘）」開關開著才顯示——開關只管可見性，road2 在完整
+ *  順序裡的位置始終保留，開關來回切也不會丟拖拽位置；切模式時在完整
  *  順序裡保留位置、切回來原地出現；拖拽與上/下移只對當前可見區塊操作。 */
 type GmbBlockId = 'controls' | 'eta' | 'road2' | 'stops' | 'help'
 const GMB_LAYOUT_KEY = 'wb20-gmb-layout'
@@ -94,6 +104,8 @@ const GMB_BLOCK_LABELS: Record<GmbBlockId, string> = {
   help: '使用說明',
 }
 
+const { road2Enabled } = useGmbRoad2Enabled()
+
 const {
   order: blockOrder,
   swap: swapBlocks,
@@ -104,7 +116,8 @@ const {
 const { push } = useToast()
 
 function isBlockVisible(id: GmbBlockId): boolean {
-  if (id === 'road2' || id === 'stops') return mode.value === 'road'
+  if (id === 'road2') return mode.value === 'road' && road2Enabled.value
+  if (id === 'stops') return mode.value === 'road'
   return true
 }
 const visibleBlocks = computed((): GmbBlockId[] =>
@@ -183,10 +196,10 @@ const modeTabs: WbTab[] = [
   { id: 'mtr', label: '港鐵' },
 ]
 
-/** 三組折疊區的開合狀態（預設收起，與舊 <details> 一致）。 */
+/** 兩組折疊區的開合狀態（預設收起，與舊 <details> 一致）。
+ *  第二條路線不再折疊：設定開關開著就整塊顯示、關掉就整塊隱藏。 */
 const showAllStops = ref(false)
 const showHelp = ref(false)
-const showRoad2 = ref(false)
 
 /** 首屏掛載進場：只在首次掛載播一次（見下方 onMounted），之後刷新不重播。 */
 const mountEnter = ref(true)
@@ -237,12 +250,38 @@ function etaCardStyle2(i: number): CSSProperties | undefined {
   return etaAnim2.value[i] ? { animationDelay: `${i * 70}ms` } : undefined
 }
 
-/** 港鐵當前綫的官方路線圖顏色（只做點綴：色點、徽章、結果卡左邊框）。 */
+/** 港鐵當前綫的官方路線圖顏色（只做點綴：結果卡左邊框）。 */
 const mtrLineColor = computed((): string => MTR_LINE_COLORS[mtr.value.line] ?? '#888888')
-const mtrLineChipText = computed((): string => lineChipText(mtr.value.line))
-const currentLineName = computed(
-  (): string => mtrLineOptions.value.find((l) => l.code === mtr.value.line)?.name ?? '',
-)
+
+/** 綫路徽章上的綫名（按代碼查 mtrLineOptions）。 */
+function mtrLineName(code: string): string {
+  return mtrLineOptions.value.find((l) => l.code === code)?.name ?? code
+}
+
+/** 車站搜尋：按站名或代碼過濾 98 站下拉框；當前站不在過濾結果裡時
+ *  補在最前面，選中的站永遠可見。選站後清空搜尋、恢復完整列表。 */
+const mtrStationQuery = ref('')
+const filteredMtrStations = computed((): MtrStationEntry[] => {
+  const q = mtrStationQuery.value.trim().toLowerCase()
+  const list = !q
+    ? MTR_STATIONS
+    : MTR_STATIONS.filter(
+        (s) => s.name.includes(q) || s.code.toLowerCase().includes(q),
+      )
+  const cur = findStationEntry(mtr.value.sta, mtr.value.line)
+  if (cur && !list.some((s) => s.code === cur.code && s.name === cur.name)) {
+    return [cur, ...list]
+  }
+  return list
+})
+
+/** 綫路徽章：官方底色 + 對比文字色；當前綫描邊高亮、其餘半透明。 */
+function mtrLineChipClass(code: string): string {
+  const base = 'rounded-full px-3 py-1.5 text-xs font-medium transition-all active:scale-95'
+  return mtr.value.line === code
+    ? `${base} ring-2 ring-ring ring-offset-2 ring-offset-background`
+    : `${base} opacity-60 hover:opacity-100`
+}
 
 const inputClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring'
@@ -270,7 +309,7 @@ const selectClass =
         </button>
       </div>
       <p class="text-sm text-muted-foreground">
-        小巴、巴士、港鐵實時到站：輸路線號碼、選方向、選站，即見下三班車。
+        小巴、巴士、港鐵實時到站：輸路線號碼、選方向、選站，即見下三班車；港鐵先選站、再點綫路徽章切綫。
       </p>
     </header>
 
@@ -295,7 +334,7 @@ const selectClass =
     >
       <!-- 控制區：路線、方向、上車站都在第一屏 -->
       <template v-if="blockId === 'controls'">
-        <section class="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
+        <section class="space-y-4 rounded-lg border border-border bg-card p-5 shadow-sm">
       <!-- 模式切換：共享 WbTabs（滑動指示條）；面板切換見下方 wb-fade Transition -->
       <WbTabs :model-value="mode" :tabs="modeTabs" @update:model-value="onModeTab" />
 
@@ -339,10 +378,10 @@ const selectClass =
           </span>
         </div>
 
-        <!-- 港鐵：選綫、選站 -->
+        <!-- 港鐵：先選站，再點綫路徽章切綫 -->
         <div v-else key="mtr" class="space-y-3">
           <!-- 找最近車站：只在點按鈕時請求定位權限；授權過且開關開著時，進港鐵模式自動定位一次 -->
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <button
               type="button"
               class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent active:scale-95 disabled:opacity-50"
@@ -368,53 +407,42 @@ const selectClass =
               </span>
               自動定位
             </label>
+            <span v-if="nearestInfo" class="text-xs text-muted-foreground">{{
+              nearestInfo
+            }}</span>
           </div>
-          <p v-if="nearestInfo" class="text-xs text-muted-foreground">{{ nearestInfo }}</p>
           <p class="text-xs text-muted-foreground">
             位置只在瀏覽器本地計算最近車站，不會上傳。
           </p>
+          <!-- 選站：搜尋 + 下拉框（98 站）；選站後自動選綫（單綫站直接定綫，
+               轉車站保留當前綫、沒有才取第一條） -->
           <div class="flex flex-wrap items-center gap-2">
-            <label class="flex items-center gap-2 text-sm">
-              <span
-                class="h-3 w-3 shrink-0 rounded-full"
-                :style="{ backgroundColor: mtrLineColor }"
-                aria-hidden="true"
-              />
-              綫
-              <select
-                v-model="mtr.line"
-                aria-label="港鐵綫"
-                :class="selectClass"
-                @change="onMtrLineChange"
-              >
-                <option
-                  v-for="line in mtrLineOptions"
-                  :key="line.code"
-                  :value="line.code"
-                >
-                  {{ line.name }}
-                </option>
-              </select>
-            </label>
             <label class="flex items-center gap-2 text-sm">
               站
               <select
-                v-model="mtr.sta"
+                v-model="mtrStationKey"
                 aria-label="港鐵站"
                 :class="selectClass"
-                @change="onMtrStationChange"
+                @change="mtrStationQuery = ''"
               >
-                <option v-for="[code, name] in mtrStations" :key="code" :value="code">
-                  {{ name }}
+                <option
+                  v-for="s in filteredMtrStations"
+                  :key="stationKeyOf(s.code, s.name)"
+                  :value="stationKeyOf(s.code, s.name)"
+                >
+                  {{ s.name }} · {{ s.code }}
                 </option>
               </select>
             </label>
-            <span
-              class="rounded-full px-2.5 py-1 text-xs font-medium"
-              :style="{ backgroundColor: mtrLineColor, color: mtrLineChipText }"
-            >
-              {{ currentLineName }}
-            </span>
+            <input
+              v-model="mtrStationQuery"
+              type="text"
+              placeholder="搜尋站名或代碼…"
+              aria-label="搜尋港鐵站"
+              spellcheck="false"
+              :class="inputClass"
+              class="w-40"
+            />
             <button
               type="button"
               title="重新查一次班次"
@@ -425,9 +453,32 @@ const selectClass =
               <WbSpinner v-if="refreshing" size="md" class="mr-2" />
               {{ refreshing ? '刷新中…' : '刷新' }}
             </button>
-            <span v-if="routeRegionLabel" class="text-sm text-muted-foreground">
-              {{ routeRegionLabel }}
-            </span>
+          </div>
+          <!-- 綫路徽章：該站全部綫路一次列出，官方路線圖顏色，點一下切綫看班次。
+               每條綫的下一班在下方「下三班車」；徽章裡不另塞分鐘數（多綫轉車站
+               要多查幾次 API，版式也擠），點徽章切綫就夠。 -->
+          <div
+            v-if="mtrStationLines.length"
+            class="flex flex-wrap items-center gap-2"
+            role="tablist"
+            aria-label="綫路"
+          >
+            <span class="text-xs text-muted-foreground">綫路</span>
+            <button
+              v-for="code in mtrStationLines"
+              :key="code"
+              type="button"
+              role="tab"
+              :aria-selected="mtr.line === code"
+              :class="mtrLineChipClass(code)"
+              :style="{
+                backgroundColor: MTR_LINE_COLORS[code] ?? '#888888',
+                color: lineChipText(code),
+              }"
+              @click="onMtrLineChip(code)"
+            >
+              {{ mtrLineName(code) }}
+            </button>
           </div>
         </div>
       </Transition>
@@ -453,14 +504,15 @@ const selectClass =
         </button>
       </div>
 
-      <!-- 方向 -->
+      <!-- 方向：巴士 · 小巴是起訖點，港鐵是往哪個終點站 -->
       <div
         v-if="dirOptions.length"
         v-auto-animate
-        class="flex flex-wrap gap-2"
+        class="flex flex-wrap items-center gap-2"
         role="tablist"
         aria-label="方向"
       >
+        <span class="text-xs text-muted-foreground">方向</span>
         <button
           v-for="d in dirOptions"
           :key="d.key"
@@ -509,22 +561,25 @@ const selectClass =
         </button>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3">
-        <label class="flex cursor-pointer items-center gap-2 text-sm">
-          <input v-model="autoRefresh" type="checkbox" class="h-4 w-4 accent-current" />
-          每 30 秒自動刷新
-        </label>
-        <span class="flex items-center gap-2 text-sm">
-          <WbSpinner v-if="refreshing" size="sm" class="shrink-0 text-muted-foreground" />
-          <span
-            v-else
-            class="inline-block h-2 w-2 shrink-0 rounded-full"
-            :class="statusDotClass"
-          />
-          <span>{{ status.message }}</span>
-        </span>
-        <span class="flex-1" />
-        <span class="text-xs text-muted-foreground">{{ detailStats }}</span>
+      <!-- 狀態列：自動刷新開關、即時狀態、更新頻率 -->
+      <div class="border-t border-border pt-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="flex cursor-pointer items-center gap-2 text-sm">
+            <input v-model="autoRefresh" type="checkbox" class="h-4 w-4 accent-current" />
+            每 30 秒自動刷新
+          </label>
+          <span class="flex items-center gap-2 text-sm">
+            <WbSpinner v-if="refreshing" size="sm" class="shrink-0 text-muted-foreground" />
+            <span
+              v-else
+              class="inline-block h-2 w-2 shrink-0 rounded-full"
+              :class="statusDotClass"
+            />
+            <span>{{ status.message }}</span>
+          </span>
+          <span class="flex-1" />
+          <span class="text-xs text-muted-foreground">{{ detailStats }}</span>
+        </div>
       </div>
         </section>
       </template>
@@ -585,39 +640,10 @@ const selectClass =
         </div>
       </template>
 
-      <!-- 第二條路線（換乘）：預設收起；與主面板同一 30 秒 tick 一起刷新 -->
+      <!-- 第二條路線（換乘）：設定開關開著才出現，不折疊、整塊直接顯示；
+           與主面板同一 30 秒 tick 一起刷新（開關關掉時不查） -->
       <template v-else-if="blockId === 'road2'">
-        <section class="rounded-lg border border-border bg-card p-5 shadow-sm">
-      <button
-        type="button"
-        class="flex w-full items-center justify-between gap-2 text-sm font-medium"
-        :aria-expanded="showRoad2"
-        @click="showRoad2 = !showRoad2"
-      >
-        <span>
-          第二條路線（換乘）
-          <span v-if="roadCode2" class="font-normal text-muted-foreground">
-            · {{ roadCode2 }}
-          </span>
-        </span>
-        <svg
-          class="wb-chevron shrink-0"
-          :class="{ 'wb-chevron--open': showRoad2 }"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-      <div v-auto-animate>
-        <div v-if="showRoad2" class="mt-4 space-y-4">
+        <section class="space-y-4 rounded-lg border border-border bg-card p-5 shadow-sm">
           <div class="flex flex-wrap items-center gap-2">
             <label class="sr-only" for="routeInput2">第二條路線號碼</label>
             <input
@@ -755,8 +781,6 @@ const selectClass =
             <span class="flex-1" />
             <span class="text-xs text-muted-foreground">{{ detailStats2 }}</span>
           </div>
-        </div>
-      </div>
         </section>
       </template>
 
@@ -855,7 +879,7 @@ const selectClass =
       <div v-auto-animate>
         <p v-if="showHelp" class="mt-2 text-xs leading-relaxed text-muted-foreground">
           巴士 / 小巴：輸路線號碼，同一個編號有多條路線時（例如 1
-          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換；「第二條路線（換乘）」可以同時查另一條路線，方便轉車。港鐵選綫、選站即見下三班車。數據：運輸署
+          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換。港鐵先選站，再點綫路徽章切綫看班次，轉車站的全部綫路一次列出。想同時查另一條路線（換乘），在設定裡打開「第二條路線」。數據：運輸署
           / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。
         </p>
       </div>
