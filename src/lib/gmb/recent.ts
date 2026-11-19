@@ -49,3 +49,15 @@ export function saveRecent(code: string, src: string): RecentEntry[] {
   }
   return trimmed
 }
+
+/** 清掉最近路線（新舊兩個鍵都刪），回傳空列表供 UI 刷新。 */
+export function clearRecent(): RecentEntry[] {
+  for (const key of RECENT_KEYS) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // 寫不進去也不影響
+    }
+  }
+  return []
+}

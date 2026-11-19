@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Braces,
@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   KeyRound,
-  Layers,
   QrCode,
   type LucideIcon,
 } from 'lucide-vue-next'
@@ -30,6 +29,12 @@ const TOOLS: readonly ToolEntry[] = [
 const route = useRoute()
 const open = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
+
+/** The tool currently open (from route.name; falls back to JSON / SQL). */
+const currentTool = computed<ToolEntry>(
+  (): ToolEntry =>
+    TOOLS.find((t: ToolEntry): boolean => t.name === route.name) ?? TOOLS[0],
+)
 
 /**
  * Prefetch a route chunk on hover/focus so the first visit is instant.
@@ -86,17 +91,8 @@ onUnmounted((): void => {
       class="flex h-9 items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-accent"
       @click="toggle()"
     >
-      <span
-        class="logo-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm ring-1 ring-black/10"
-      >
-        <Layers class="h-4 w-4" />
-      </span>
-      <span class="hidden text-sm font-semibold tracking-tight sm:inline">MyWorkbench</span>
-      <span
-        class="hidden shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline"
-      >
-        2.0
-      </span>
+      <component :is="currentTool.icon" class="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span class="truncate text-sm font-semibold tracking-tight">{{ currentTool.label }}</span>
       <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
 
@@ -125,7 +121,7 @@ onUnmounted((): void => {
           <span
             class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground"
           >
-            2.0.0-alpha.6
+            2.0.0-alpha.7
           </span>
         </div>
       </div>

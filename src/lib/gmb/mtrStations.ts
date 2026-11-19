@@ -31,6 +31,35 @@ export const MTR_LINES: Record<string, MtrLine> = {
 
 export const MTR_LINE_ORDER: string[] = ['TWL', 'KTL', 'ISL', 'TCL', 'TKL', 'EAL', 'TML', 'SIL', 'DRL', 'AEX']
 
+/** 港鐵各綫官方路線圖顏色（英文維基百科各綫條目 infobox「Color on map」欄位核對）。
+ *  只做品牌點綴用：綫路徽章、色點、結果卡左邊框、當前綫高亮；絕不用作正文顏色或版面底色。 */
+export const MTR_LINE_COLORS: Record<string, string> = {
+  TWL: '#ED1D24', // 荃灣綫紅
+  KTL: '#00AB4E', // 觀塘綫綠
+  ISL: '#007DC5', // 港島綫深藍
+  TCL: '#F7943E', // 東涌綫橙
+  TKL: '#7D499D', // 將軍澳綫紫
+  EAL: '#53B7E8', // 東鐵綫淺藍
+  TML: '#923011', // 屯馬綫啡
+  SIL: '#BAC429', // 南港島綫石灰綠
+  DRL: '#F173AC', // 迪士尼綫粉紅
+  AEX: '#00888A', // 機場快綫青
+}
+
+/** 綫路徽章上的文字色：白字對比 ≥ 4.0 用白，否則用深灰 #262626（WCAG 實測：
+ *  白字：TWL 4.37、ISL 4.43、TKL 6.34、TML 7.92、AEX 4.30；
+ *  深灰字：KTL 5.00、TCL 6.67、EAL 6.71、SIL 7.94、DRL 5.61）。 */
+export function lineChipText(code: string): string {
+  const hex = MTR_LINE_COLORS[code]
+  if (!hex) return '#262626'
+  const c = (i: number): number => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  const lum = 0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5)
+  return 1.05 / (lum + 0.05) >= 4 ? '#ffffff' : '#262626'
+}
+
 export function mtrStationName(line: string, code: string): string {
   const stations = MTR_LINES[line]?.stations ?? []
   for (const [c, name] of stations) {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
-import CopyButton from './CopyButton.vue'
+import { useToast } from '../composables/useToast'
 import { treeHasMatch } from '../lib/jsonsql/jsonCore'
 import { isRecord, type JsonValue } from '../lib/jsonsql/types'
 
@@ -18,6 +18,8 @@ const props = defineProps<{
   /** Whether a trailing comma follows this node (not the last sibling). */
   comma?: boolean
 }>()
+
+const { push } = useToast()
 
 const isObj = computed((): boolean => props.value !== null && typeof props.value === 'object')
 
@@ -86,6 +88,26 @@ function toggle(): void {
   expanded.value = !expanded.value
 }
 
+async function copyLeaf(): Promise<void> {
+  const text = String(props.value)
+  try {
+    await navigator.clipboard.writeText(text)
+    push('已复制到剪贴板')
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    try {
+      document.execCommand('copy')
+      push('已复制到剪贴板')
+    } catch {
+      push('复制失败，请手动选择复制')
+    }
+    document.body.removeChild(ta)
+  }
+}
+
 function leafClass(v: JsonValue): string {
   if (typeof v === 'string') return 'text-emerald-700 dark:text-emerald-300'
   if (typeof v === 'number') return 'text-orange-700 dark:text-orange-300'
@@ -102,15 +124,15 @@ function leafText(v: JsonValue): string {
 <template>
   <div v-show="visible" class="font-mono text-[13px] leading-6 tabular-nums">
     <template v-if="!isObj">
-      <span class="group inline-flex items-center gap-1 rounded px-0.5 hover:bg-accent">
+      <span
+        class="cursor-pointer rounded px-0.5 hover:bg-accent"
+        title="点击复制该值"
+        @click="copyLeaf"
+      >
         <span v-if="nodeKey !== undefined" class="text-sky-700 dark:text-sky-300">"{{ nodeKey }}"</span>
         <span v-if="nodeKey !== undefined">: </span>
         <span :class="leafClass(value)">{{ leafText(value) }}</span>
         <span v-if="comma">,</span>
-        <CopyButton
-          :text="typeof value === 'string' ? value : String(value)"
-          class="shrink-0 opacity-0 !h-5 !px-1 group-hover:opacity-100 focus-visible:opacity-100"
-        />
       </span>
     </template>
     <template v-else>

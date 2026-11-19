@@ -27,20 +27,21 @@ import {
   toYamlLines,
 } from '../lib/jsonsql/jsonCore'
 import {
+  clearDraft,
   clearHistory as clearStoredHistory,
   isRememberOn,
   loadDraft,
   loadHistory,
   loadLangMode,
-  loadShortcuts,
   loadSplit,
   saveDraft,
   saveHistory,
   saveLangMode,
-  saveShortcuts,
   saveSplit,
   setRemember,
 } from '../lib/jsonsql/storage'
+import { CLEAR_HISTORY_EVENT, useSettings } from '../composables/useSettings'
+import { useShortcuts } from '../composables/useShortcuts'
 import type {
   DiffOp,
   IndentOption,
@@ -91,7 +92,6 @@ const moreOpen = ref(false)
 const wrapOutput = ref(true)
 /** 每次出现新结果就 +1，让 <pre> 重建并重播 .wb-result-in 淡入。 */
 const resultAnimKey = ref(0)
-const shortcutOpen = ref(false)
 const historyItems = ref<string[]>([])
 const historySelected = ref('')
 const splitPct = ref(50)
@@ -837,6 +837,18 @@ function clearHistory(): void {
   push('已清空历史记录')
 }
 
+function onClearHistoryEvent(e: Event): void {
+  const scope = (e as CustomEvent<{ scope: string }>).detail?.scope
+  if (scope !== 'json' && scope !== 'all') return
+  clearStoredHistory()
+  clearDraft()
+  historyItems.value = []
+  historySelected.value = ''
+  setInputValue('')
+  lastFormatted.value = ''
+  push('已清空历史记录与草稿')
+}
+
 function openDiffPanel(): void {
   moreOpen.value = false
   diffPanelOpen.value = true
@@ -862,76 +874,21 @@ function closeJpResults(): void {
 }
 
 /* ---------- shortcuts ---------- */
-interface ShortcutDef {
-  id: string
-  name: string
-  combo: string
-  allowEditable: boolean
-}
+/* 注册表与改键逻辑在共享 composable（useShortcuts）；设置弹窗在 AppLayout
+ * 里的 WbSettingsDialog，Ctrl+Alt+S 由 AppLayout 全局监听。 */
+const {
+  shortcuts,
+  listeningId,
+  shortcutLabel,
+  eventCombo,
+  captureCombo,
+  loadShortcutsIntoRegistry,
+} = useShortcuts()
+const { open: openSettings } = useSettings()
 
-const DEFAULT_SHORTCUTS: ShortcutDef[] = [
-  { id: 'format', name: '格式化', combo: 'ctrl+enter', allowEditable: true },
-  { id: 'selectResult', name: '选中格式化结果', combo: 'ctrl+a', allowEditable: false },
-  { id: 'copyResult', name: '复制结果（带颜色）', combo: 'ctrl+alt+c', allowEditable: true },
-  { id: 'copyMarkdown', name: '复制为 Markdown 代码块', combo: 'ctrl+alt+m', allowEditable: true },
-  { id: 'toggleTree', name: '展开 / 折叠全部节点（树形）', combo: 'ctrl+l', allowEditable: true },
-  { id: 'openSettings', name: '打开快捷键设置', combo: 'ctrl+alt+s', allowEditable: true },
-]
-
-const shortcuts = ref<ShortcutDef[]>(DEFAULT_SHORTCUTS.map((s) => ({ ...s })))
-const listeningId = ref<string | null>(null)
-
-function loadShortcutsIntoRegistry(): void {
-  const saved = loadShortcuts()
-  shortcuts.value = DEFAULT_SHORTCUTS.map((s) => ({
-    ...s,
-    combo: saved[s.id] ?? s.combo,
-  }))
-}
-
-function persistShortcuts(): void {
-  const map: Record<string, string> = {}
-  shortcuts.value.forEach((s) => {
-    map[s.id] = s.combo
-  })
-  saveShortcuts(map)
-}
-
-function comboLabel(combo: string): string {
-  return combo
-    .split('+')
-    .map((p) => {
-      if (p === 'ctrl') return 'Ctrl'
-      if (p === 'alt') return 'Alt'
-      if (p === 'shift') return 'Shift'
-      if (p === 'enter') return 'Enter'
-      if (p === 'space') return 'Space'
-      return p.toUpperCase()
-    })
-    .join('+')
-}
-
-function shortcutLabel(id: string): string {
-  const s = shortcuts.value.find((x) => x.id === id)
-  return s ? comboLabel(s.combo) : ''
-}
-
-const footerHint = computed((): string =>
-  `${shortcutLabel('format')} 格式化 · ${shortcutLabel('selectResult')} 选中结果 · ` +
-  `${shortcutLabel('copyResult')} 复制结果 · ${shortcutLabel('openSettings')} 快捷键设置`,
-)
-
-// Normalize a key event to the registry's combo spelling (Mac Cmd counts as Ctrl).
-function eventCombo(e: KeyboardEvent): string | null {
-  const k = (e.key || '').toLowerCase()
-  if (k === 'control' || k === 'alt' || k === 'shift' || k === 'meta') return null
-  const parts: string[] = []
-  if (e.ctrlKey || e.metaKey) parts.push('ctrl')
-  if (e.altKey) parts.push('alt')
-  if (e.shiftKey) parts.push('shift')
-  parts.push(k === ' ' ? 'space' : k)
-  return parts.join('+')
-}
+const footerHint = computed((): string => {
+  return `格式化 ${shortcutLabel('format')} · 复制 ${shortcutLabel('copyResult')} · 快捷键设置 ${shortcutLabel('openSettings')}`
+})
 
 function runShortcut(id: string): void {
   if (id === 'format') doFormat()
@@ -939,61 +896,7 @@ function runShortcut(id: string): void {
   else if (id === 'copyResult') copyFormatted()
   else if (id === 'copyMarkdown') copyMarkdown()
   else if (id === 'toggleTree') toggleAllTree()
-  else if (id === 'openSettings') openShortcutSettings()
-}
-
-function openShortcutSettings(): void {
-  moreOpen.value = false
-  if (shortcutOpen.value) {
-    closeShortcutSettings()
-    return
-  }
-  shortcutOpen.value = true
-}
-
-function closeShortcutSettings(): void {
-  listeningId.value = null
-  shortcutOpen.value = false
-}
-
-function startRebind(id: string): void {
-  listeningId.value = id
-}
-
-function cancelRebind(): void {
-  listeningId.value = null
-}
-
-function captureCombo(e: KeyboardEvent): void {
-  const combo = eventCombo(e)
-  if (!combo) return
-  if (combo === 'escape') {
-    cancelRebind()
-    return
-  }
-  const parts = combo.split('+')
-  // At least Ctrl / Cmd or Alt, or a bare key would steal normal typing
-  if (parts.indexOf('ctrl') === -1 && parts.indexOf('alt') === -1) {
-    push('组合键至少包含 Ctrl / Cmd 或 Alt')
-    return
-  }
-  const other = shortcuts.value.find((s) => s.combo === combo)
-  if (other && other.id !== listeningId.value) {
-    push(`已被「${other.name}」占用，换一组试试`)
-    return
-  }
-  shortcuts.value.forEach((s) => {
-    if (s.id === listeningId.value) s.combo = combo
-  })
-  persistShortcuts()
-  listeningId.value = null
-  push('已保存')
-}
-
-function resetShortcuts(): void {
-  shortcuts.value = DEFAULT_SHORTCUTS.map((s) => ({ ...s }))
-  persistShortcuts()
-  push('已恢复默认快捷键')
+  // openSettings 由 AppLayout 全局处理，不在这里分发。
 }
 
 function onKeydown(e: KeyboardEvent): void {
@@ -1005,10 +908,6 @@ function onKeydown(e: KeyboardEvent): void {
     return
   }
   if (e.key === 'Escape') {
-    if (shortcutOpen.value) {
-      closeShortcutSettings()
-      return
-    }
     moreOpen.value = false
     return
   }
@@ -1016,6 +915,8 @@ function onKeydown(e: KeyboardEvent): void {
   if (!combo) return
   const sc = shortcuts.value.find((s) => s.combo === combo)
   if (!sc) return
+  // 打开设置由 AppLayout 全局处理（Ctrl+Alt+S 在四页通用）；这里只放行冒泡。
+  if (sc.id === 'openSettings') return
   const ae = document.activeElement as HTMLElement | null
   const tag = ae ? ae.tagName : ''
   const editable = !!ae && (ae.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')
@@ -1102,6 +1003,7 @@ onMounted((): void => {
   if (split.pct !== null) splitPct.value = split.pct
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onDocumentClick)
+  window.addEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
   // Draft restore; a share link (#j=) wins over the draft.
   const draft = loadDraft()
   if (draft && !inputText.value) {
@@ -1114,6 +1016,7 @@ onMounted((): void => {
 onUnmounted((): void => {
   document.removeEventListener('keydown', onKeydown)
   document.removeEventListener('click', onDocumentClick)
+  window.removeEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
   if (draftTimer !== undefined) window.clearTimeout(draftTimer)
 })
 </script>
@@ -1248,7 +1151,7 @@ onUnmounted((): void => {
           >
             分享链接
           </button>
-          <button type="button" class="more-item" title="查看与修改全部快捷键" @click="openShortcutSettings">
+          <button type="button" class="more-item" title="查看与修改全部快捷键" @click="openSettings">
             快捷键设置
           </button>
           <div class="more-row">
@@ -1377,7 +1280,7 @@ onUnmounted((): void => {
           >
             分享链接
           </button>
-          <button type="button" class="more-item" title="查看与修改全部快捷键" @click="openShortcutSettings">
+          <button type="button" class="more-item" title="查看与修改全部快捷键" @click="openSettings">
             快捷键设置
           </button>
           <div class="more-row">
@@ -1692,60 +1595,6 @@ onUnmounted((): void => {
       <span class="text-xs text-muted-foreground">{{ detailStats }}</span>
     </footer>
 
-    <!-- 快捷键设置 -->
-    <Transition name="wb-overlay">
-      <div
-        v-if="shortcutOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        @click.self="closeShortcutSettings"
-      >
-        <Transition name="wb-dialog">
-          <div v-if="shortcutOpen" role="dialog" aria-modal="true" aria-label="快捷键设置" class="w-full max-w-md rounded-lg border border-border bg-card p-4 shadow-xl">
-        <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-base font-semibold">快捷键设置</h2>
-          <button
-            type="button"
-            class="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-accent"
-            @click="closeShortcutSettings"
-          >
-            关闭
-          </button>
-        </div>
-        <p class="mb-3 text-sm text-muted-foreground">
-          点「更改」，然后按下新的组合键（至少包含 Ctrl / Cmd 或 Alt，Esc 取消）。改完自动保存。
-        </p>
-        <div class="space-y-1.5">
-          <div
-            v-for="s in shortcuts"
-            :key="s.id"
-            :class="['flex items-center gap-2 rounded-md border px-3 py-2', listeningId === s.id ? 'border-primary' : 'border-border']"
-          >
-            <span class="min-w-0 flex-1 text-sm">{{ s.name }}</span>
-            <kbd class="shrink-0 rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">
-              {{ listeningId === s.id ? '按下新的组合键…' : comboLabel(s.combo) }}
-            </kbd>
-            <button
-              type="button"
-              class="inline-flex h-8 shrink-0 items-center rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-accent"
-              @click="listeningId === s.id ? cancelRebind() : startRebind(s.id)"
-            >
-              {{ listeningId === s.id ? '取消' : '更改' }}
-            </button>
-          </div>
-        </div>
-        <div class="mt-3">
-          <button
-            type="button"
-            class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
-            @click="resetShortcuts"
-          >
-            恢复默认
-          </button>
-        </div>
-          </div>
-        </Transition>
-      </div>
-    </Transition>
   </div>
 </template>
 
@@ -1789,6 +1638,36 @@ html[data-theme='dracula'] .wb-b { color: #ff79c6; }
 html[data-theme='dracula'] .wb-u { color: #ffb86c; }
 html[data-theme='dracula'] .wb-p { color: #6272a4; }
 html[data-theme='dracula'] .wb-c { color: #6272a4; font-style: italic; }
+/* Light companions — text-safe syntax colours (same values as the
+ * --code-* tokens in main.css; code areas sit on card surfaces). */
+html[data-theme='tokyonight-light'] .wb-k { color: #155fc5; }
+html[data-theme='tokyonight-light'] .wb-s { color: #506b34; }
+html[data-theme='tokyonight-light'] .wb-n { color: #984f00; }
+html[data-theme='tokyonight-light'] .wb-b { color: #7847bd; }
+html[data-theme='tokyonight-light'] .wb-u { color: #c40940; }
+html[data-theme='tokyonight-light'] .wb-p { color: #4f609e; }
+html[data-theme='tokyonight-light'] .wb-c { color: #576090; font-style: italic; }
+html[data-theme='catppuccin-latte'] .wb-k { color: #145ff5; }
+html[data-theme='catppuccin-latte'] .wb-s { color: #327c21; }
+html[data-theme='catppuccin-latte'] .wb-n { color: #bc4501; }
+html[data-theme='catppuccin-latte'] .wb-b { color: #8839ef; }
+html[data-theme='catppuccin-latte'] .wb-u { color: #d20f39; }
+html[data-theme='catppuccin-latte'] .wb-p { color: #686b7e; }
+html[data-theme='catppuccin-latte'] .wb-c { color: #676a7f; font-style: italic; }
+html[data-theme='gruvbox-light'] .wb-k { color: #076678; }
+html[data-theme='gruvbox-light'] .wb-s { color: #74700d; }
+html[data-theme='gruvbox-light'] .wb-n { color: #af3a03; }
+html[data-theme='gruvbox-light'] .wb-b { color: #8f3f71; }
+html[data-theme='gruvbox-light'] .wb-u { color: #9d0006; }
+html[data-theme='gruvbox-light'] .wb-p { color: #665c54; }
+html[data-theme='gruvbox-light'] .wb-c { color: #766a5f; font-style: italic; }
+html[data-theme='dracula-light'] .wb-k { color: #8b41f4; }
+html[data-theme='dracula-light'] .wb-s { color: #047f23; }
+html[data-theme='dracula-light'] .wb-n { color: #ae5a00; }
+html[data-theme='dracula-light'] .wb-b { color: #da007d; }
+html[data-theme='dracula-light'] .wb-u { color: #e40000; }
+html[data-theme='dracula-light'] .wb-p { color: #5f6fa2; }
+html[data-theme='dracula-light'] .wb-c { color: #5f6fa2; font-style: italic; }
 </style>
 
 <style scoped>

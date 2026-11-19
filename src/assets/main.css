@@ -224,6 +224,147 @@ html[data-theme='dracula'] {
   --code-punct: 225 27% 51%;
 }
 
+/* Tokyo Night Light (Day) — 官方 Day 配色，文字一律用 text-safe 栏
+ * （见 vue2-light-themes/palettes.md）：底 #e1e2e7、面板 #eef0f3（官方
+ * bg_dark 太深、文字只有 3.99:1，面板改用浅色衍生值）、正文 #3760bf
+ * （4.52:1，官方原值、余量极小）、次要 #4f609e、主色 #155fc5。
+ * 主色按钮配白字（6.04:1）。语法色全部取 text-safe 值。 */
+html[data-theme='tokyonight-light'] {
+  --background: 230 11% 89%;
+  --foreground: 222 55% 48%;
+  --card: 216 17% 94%;
+  --card-foreground: 222 55% 48%;
+  --popover: 216 17% 94%;
+  --popover-foreground: 222 55% 48%;
+  --primary: 215 81% 43%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 216 17% 94%;
+  --secondary-foreground: 222 55% 48%;
+  --muted: 216 17% 94%;
+  --muted-foreground: 227 33% 46%;
+  --accent: 216 17% 94%;
+  --accent-foreground: 222 55% 48%;
+  --destructive: 342 91% 40%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 228 3% 72%;
+  --input: 228 3% 72%;
+  --ring: 215 81% 43%;
+  --brand-1: 215 81% 43%;
+  --brand-2: 265 47% 51%;
+  --code-key: 215 81% 43%;
+  --code-string: 89 35% 31%;
+  --code-number: 31 100% 30%;
+  --code-bool: 265 47% 51%;
+  --code-null: 342 91% 40%;
+  --code-punct: 227 33% 46%;
+}
+
+/* Catppuccin Latte — 官方 Latte 配色：页底 #e6e9ef（mantle）、面板
+ * #eff1f5（base）、正文 #4c4f69、次要 #5c5f77、主色 #8839ef（mauve，
+ * 在 base 上 4.79:1；mantle 上只有 4.45:1，故主色文字只出现在面板上）。
+ * 语法色取 text-safe 值（键 #145ff5 / 字符串 #327c21 / 数字 #bc4501 /
+ * 空值 #d20f39 / 标点 #686b7e）。次要面用 crust #dce0e8。 */
+html[data-theme='catppuccin-latte'] {
+  --background: 220 22% 92%;
+  --foreground: 234 16% 35%;
+  --card: 220 23% 95%;
+  --card-foreground: 234 16% 35%;
+  --popover: 220 23% 95%;
+  --popover-foreground: 234 16% 35%;
+  --primary: 266 85% 58%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 21% 89%;
+  --secondary-foreground: 234 16% 35%;
+  --muted: 220 21% 89%;
+  --muted-foreground: 233 13% 41%;
+  --accent: 220 21% 89%;
+  --accent-foreground: 234 16% 35%;
+  --destructive: 347 87% 44%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 223 16% 83%;
+  --input: 223 16% 83%;
+  --ring: 266 85% 58%;
+  --brand-1: 266 85% 58%;
+  --brand-2: 316 73% 44%;
+  --code-key: 220 92% 52%;
+  --code-string: 109 58% 31%;
+  --code-number: 22 99% 37%;
+  --code-bool: 266 85% 58%;
+  --code-null: 347 87% 44%;
+  --code-punct: 232 10% 45%;
+}
+
+/* Gruvbox Light (medium) — 页底与卡片对调：页面用 bg1 #ebdbb2、
+ * 卡片用 bg0 #fbf1c7（语法绿/青在 bg1 上只有 3.76/3.79:1，在 bg0
+ * 上 4.55/4.58:1；代码区在卡片上，故语法只落在 bg0）。正文 #3c3836、
+ * 次要 #665c54、主色/键 #076678（页底上 4.81:1）。语法色取 text-safe
+ * 值（字符串 #74700d / 数字 #af3a03 / 布尔 #8f3f71 / 空值 #9d0006）。
+ * 次要面与卡片同色（bg2 #d5c4a1 上次要文字只有 3.80:1，不可用）。 */
+html[data-theme='gruvbox-light'] {
+  --background: 43 59% 81%;
+  --foreground: 20 5% 22%;
+  --card: 48 87% 88%;
+  --card-foreground: 20 5% 22%;
+  --popover: 48 87% 88%;
+  --popover-foreground: 20 5% 22%;
+  --primary: 190 89% 25%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 48 87% 88%;
+  --secondary-foreground: 20 5% 22%;
+  --muted: 48 87% 88%;
+  --muted-foreground: 27 10% 36%;
+  --accent: 48 87% 88%;
+  --accent-foreground: 20 5% 22%;
+  --destructive: 358 100% 31%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 40 38% 73%;
+  --input: 40 38% 73%;
+  --ring: 190 89% 25%;
+  --brand-1: 19 97% 35%;
+  --brand-2: 37 81% 32%;
+  --code-key: 190 89% 25%;
+  --code-string: 58 80% 25%;
+  --code-number: 19 97% 35%;
+  --code-bool: 323 39% 40%;
+  --code-null: 358 100% 31%;
+  --code-punct: 27 10% 36%;
+}
+
+/* Dracula Light — 定制浅色版（上游无官方浅色）：底取深色版前景
+ * #f8f8f2、文字取深色版底色 #282a36（精确反转），面板纯白 #ffffff；
+ * 紫/粉官方亮色只作装饰，主色文字用 HSL 加深的衍生值（紫 #8b41f4 /
+ * 粉 #da007d）。语法色全部取 text-safe 值（字符串 #047f23 /
+ * 数字 #ae5a00 / 空值 #e40000 / 标点 #5f6fa2）。 */
+html[data-theme='dracula-light'] {
+  --background: 60 30% 96%;
+  --foreground: 231 15% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 231 15% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 231 15% 18%;
+  --primary: 265 89% 61%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 231 15% 18%;
+  --muted: 0 0% 100%;
+  --muted-foreground: 226 26% 50%;
+  --accent: 0 0% 100%;
+  --accent-foreground: 231 15% 18%;
+  --destructive: 0 100% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 60 17% 82%;
+  --input: 60 17% 82%;
+  --ring: 265 89% 61%;
+  --brand-1: 326 100% 43%;
+  --brand-2: 265 89% 61%;
+  --code-key: 265 89% 61%;
+  --code-string: 135 94% 26%;
+  --code-number: 31 100% 34%;
+  --code-bool: 326 100% 43%;
+  --code-null: 0 100% 45%;
+  --code-punct: 226 26% 50%;
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
+import { computed, onMounted, onUnmounted, ref, type CSSProperties } from 'vue'
+import { LocateFixed } from 'lucide-vue-next'
 import WbSpinner from '../components/WbSpinner.vue'
 import WbTabs from '../components/WbTabs.vue'
 import type { WbTab } from '../components/WbTabs.vue'
 import { useGmb } from '../lib/gmb/useGmb'
+import { MTR_LINE_COLORS, lineChipText } from '../lib/gmb/mtrStations'
 
 const {
   mode,
@@ -29,7 +31,6 @@ const {
   currentStops,
   filteredStops,
   stopSeqModel,
-  routeTitle,
   routeRegionLabel,
   mtrLineOptions,
   mtrStations,
@@ -48,7 +49,33 @@ const {
   onEtaAnimEnd,
   locateNearest,
   refreshNow,
+  road2,
 } = useGmb()
+
+/* 第二條路線（換乘）的綁定：road2 是 RoadPanel，逐項改名取用。 */
+const {
+  routeInput: routeInput2,
+  roadSrc: roadSrc2,
+  roadCode: roadCode2,
+  candidates: candidates2,
+  loading: loading2,
+  status: status2,
+  etaAnim: etaAnim2,
+  etaNumKey: etaNumKey2,
+  etaCards: etaCards2,
+  dirOptions: dirOptions2,
+  activeDirKey: activeDirKey2,
+  currentStops: currentStops2,
+  stopSeqModel: stopSeqModel2,
+  routeRegionLabel: routeRegionLabel2,
+  statusDotClass: statusDotClass2,
+  detailStats: detailStats2,
+  onSearch: onSearch2,
+  onRouteKeydown: onRouteKeydown2,
+  onCandidatePick: onCandidatePick2,
+  onDirPick: onDirPick2,
+  onEtaAnimEnd: onEtaAnimEnd2,
+} = road2
 
 /** 模式 Tab（共享 WbTabs）：id 必須是 Mode，update 時先收窄再交給 setMode。 */
 const modeTabs: WbTab[] = [
@@ -56,9 +83,10 @@ const modeTabs: WbTab[] = [
   { id: 'mtr', label: '港鐵' },
 ]
 
-/** 兩組折疊區的開合狀態（預設收起，與舊 <details> 一致）。 */
+/** 三組折疊區的開合狀態（預設收起，與舊 <details> 一致）。 */
 const showAllStops = ref(false)
 const showHelp = ref(false)
+const showRoad2 = ref(false)
 
 /** 首屏掛載進場：只在首次掛載播一次（見下方 onMounted），之後刷新不重播。 */
 const mountEnter = ref(true)
@@ -96,8 +124,32 @@ function dirBtnClass(key: string): string {
     : `${base} border-border bg-background`
 }
 
+function dirBtnClass2(key: string): string {
+  const base =
+    'rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-accent'
+  return activeDirKey2.value === key
+    ? `${base} border-primary bg-accent font-medium`
+    : `${base} border-border bg-background`
+}
+
+/** 第二條路線三卡的 animation-delay（與主面板同一 70ms 錯開）。 */
+function etaCardStyle2(i: number): CSSProperties | undefined {
+  return etaAnim2.value[i] ? { animationDelay: `${i * 70}ms` } : undefined
+}
+
+/** 港鐵當前綫的官方路線圖顏色（只做點綴：色點、徽章、結果卡左邊框）。 */
+const mtrLineColor = computed((): string => MTR_LINE_COLORS[mtr.value.line] ?? '#888888')
+const mtrLineChipText = computed((): string => lineChipText(mtr.value.line))
+const currentLineName = computed(
+  (): string => mtrLineOptions.value.find((l) => l.code === mtr.value.line)?.name ?? '',
+)
+
 const inputClass =
   'h-9 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring'
+/** 路線號碼輸入框（合併後的唯一顯示）：大字粗體 + 主題重點色；底色用 bg-card，
+ *  讓重點色落在卡片表面上（淺色主題的重點色在 --background 上對比略低於 4.5:1）。 */
+const routeInputClass =
+  'h-10 rounded-md border border-input bg-card px-3 text-lg font-bold tabular-nums text-primary outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring'
 const selectClass =
   'h-9 rounded-md border border-input bg-background px-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring'
 </script>
@@ -112,14 +164,13 @@ const selectClass =
     </header>
 
     <!-- 控制區：路線、方向、上車站都在第一屏 -->
-    <section class="space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+    <section class="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
       <!-- 模式切換：共享 WbTabs（滑動指示條）；面板切換見下方 wb-fade Transition -->
       <WbTabs :model-value="mode" :tabs="modeTabs" @update:model-value="onModeTab" />
 
       <!-- 巴士 · 小巴 / 港鐵面板：共享 wb-fade 交叉淡入淡出（mode="out-in"，不同高度不跳版式） -->
       <Transition name="wb-fade" mode="out-in">
         <div v-if="mode === 'road'" key="road" class="flex flex-wrap items-center gap-2">
-          <span class="min-w-12 text-lg font-bold tabular-nums">{{ routeTitle }}</span>
           <label class="sr-only" for="routeInput">路線號碼</label>
           <input
             id="routeInput"
@@ -130,8 +181,8 @@ const selectClass =
             autocapitalize="characters"
             spellcheck="false"
             aria-label="路線號碼"
-            :class="inputClass"
-            class="w-32 uppercase"
+            :class="routeInputClass"
+            class="w-36 uppercase"
             @keydown="onRouteKeydown"
           />
           <button
@@ -163,12 +214,13 @@ const selectClass =
           <div class="flex items-center gap-2">
             <button
               type="button"
-              class="inline-flex h-11 flex-1 items-center justify-center rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+              class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent active:scale-95 disabled:opacity-50"
               :disabled="locating"
               @click="locateNearest"
             >
-              <WbSpinner v-if="locating" size="md" class="mr-2" />
-              {{ locating ? '定位中…' : '📍 找最近車站' }}
+              <WbSpinner v-if="locating" size="sm" />
+              <LocateFixed v-else class="h-3.5 w-3.5" />
+              {{ locating ? '定位中…' : '找最近車站' }}
             </button>
             <label
               class="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
@@ -192,6 +244,11 @@ const selectClass =
           </p>
           <div class="flex flex-wrap items-center gap-2">
             <label class="flex items-center gap-2 text-sm">
+              <span
+                class="h-3 w-3 shrink-0 rounded-full"
+                :style="{ backgroundColor: mtrLineColor }"
+                aria-hidden="true"
+              />
               綫
               <select
                 v-model="mtr.line"
@@ -221,6 +278,12 @@ const selectClass =
                 </option>
               </select>
             </label>
+            <span
+              class="rounded-full px-2.5 py-1 text-xs font-medium"
+              :style="{ backgroundColor: mtrLineColor, color: mtrLineChipText }"
+            >
+              {{ currentLineName }}
+            </span>
             <button
               type="button"
               title="重新查一次班次"
@@ -335,22 +398,26 @@ const selectClass =
     </section>
 
     <!-- 下三班車 -->
+    <p class="text-xs font-medium tracking-wide text-muted-foreground">下三班車</p>
     <section class="grid grid-cols-3 gap-3" aria-live="polite">
       <article
         v-for="(card, i) in etaCards"
         :key="card.label"
-        class="eta-card rounded-lg border bg-card p-3 text-center shadow-sm sm:p-4"
+        class="eta-card rounded-lg border bg-card p-4 text-center shadow-sm sm:p-5"
         :class="[
           card.soon ? 'border-green-500' : 'border-border',
           etaAnim[i] ? 'eta-updated' : '',
           mountEnter ? 'eta-mount-in' : '',
         ]"
-        :style="etaCardStyle(i)"
+        :style="[
+          etaCardStyle(i),
+          mode === 'mtr' ? { borderLeft: `3px solid ${mtrLineColor}` } : undefined,
+        ]"
         @animationend="onEtaAnimEnd(i)"
       >
         <div class="text-xs text-muted-foreground sm:text-[13px]">{{ card.label }}</div>
         <div
-          class="overflow-hidden font-mono tabular-nums text-4xl font-bold leading-tight sm:text-5xl"
+          class="overflow-hidden font-mono tabular-nums text-5xl font-bold leading-tight sm:text-6xl"
           :class="card.soon ? 'text-green-600 dark:text-green-400' : 'text-primary'"
         >
           <!-- 數字掉落動效：分鐘數真變時 :key 換，舊數字上滑淡出、新數字從上方落下；
@@ -380,6 +447,182 @@ const selectClass =
           </div>
         </Transition>
       </article>
+    </section>
+
+    <!-- 第二條路線（換乘）：預設收起；與主面板同一 30 秒 tick 一起刷新 -->
+    <section
+      v-if="mode === 'road'"
+      class="rounded-lg border border-border bg-card p-5 shadow-sm"
+    >
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 text-sm font-medium"
+        :aria-expanded="showRoad2"
+        @click="showRoad2 = !showRoad2"
+      >
+        <span>
+          第二條路線（換乘）
+          <span v-if="roadCode2" class="font-normal text-muted-foreground">
+            · {{ roadCode2 }}
+          </span>
+        </span>
+        <svg
+          class="wb-chevron shrink-0"
+          :class="{ 'wb-chevron--open': showRoad2 }"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div v-auto-animate>
+        <div v-if="showRoad2" class="mt-4 space-y-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="sr-only" for="routeInput2">第二條路線號碼</label>
+            <input
+              id="routeInput2"
+              v-model="routeInput2"
+              type="text"
+              placeholder="例如 87M、1、101、968"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              aria-label="第二條路線號碼"
+              :class="routeInputClass"
+              class="w-36 uppercase"
+              @keydown="onRouteKeydown2"
+            />
+            <button
+              type="button"
+              class="inline-flex h-10 items-center rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+              :disabled="loading2"
+              @click="onSearch2"
+            >
+              {{ loading2 ? '搜尋中…' : '查路線' }}
+            </button>
+            <span v-if="routeRegionLabel2" class="text-sm text-muted-foreground">
+              {{ routeRegionLabel2 }}
+            </span>
+          </div>
+
+          <div v-if="candidates2.length > 1" v-auto-animate class="space-y-2">
+            <p class="text-xs text-muted-foreground">同一個編號有多條路線，請選一條：</p>
+            <button
+              v-for="c in candidates2"
+              :key="c.src"
+              type="button"
+              class="flex w-full flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent"
+              :class="
+                roadSrc2 === c.src && roadCode2 === c.code
+                  ? 'border-primary bg-accent'
+                  : 'border-border bg-background'
+              "
+              @click="onCandidatePick2(c)"
+            >
+              <span class="text-sm font-medium">{{ c.label }} {{ c.code }}</span>
+              <span class="text-xs text-muted-foreground">{{ c.summary }}</span>
+            </button>
+          </div>
+
+          <div
+            v-if="dirOptions2.length"
+            v-auto-animate
+            class="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="第二條路線方向"
+          >
+            <button
+              v-for="d in dirOptions2"
+              :key="d.key"
+              type="button"
+              :class="dirBtnClass2(d.key)"
+              @click="onDirPick2(d.key)"
+            >
+              {{ d.label }}
+            </button>
+          </div>
+
+          <label v-if="currentStops2.length" class="flex flex-wrap items-center gap-2 text-sm">
+            上車站
+            <select
+              v-model.number="stopSeqModel2"
+              aria-label="第二條路線上車站"
+              :class="selectClass"
+              class="max-w-full"
+            >
+              <option
+                v-for="s in currentStops2"
+                :key="s.stop_seq"
+                :value="s.stop_seq"
+              >
+                {{ s.stop_seq }}. {{ s.name_tc }}
+              </option>
+            </select>
+          </label>
+
+          <div class="grid grid-cols-3 gap-3" aria-live="polite">
+            <article
+              v-for="(card, i) in etaCards2"
+              :key="card.label"
+              class="eta-card rounded-lg border bg-card p-4 text-center shadow-sm sm:p-5"
+              :class="[
+                card.soon ? 'border-green-500' : 'border-border',
+                etaAnim2[i] ? 'eta-updated' : '',
+              ]"
+              :style="etaCardStyle2(i)"
+              @animationend="onEtaAnimEnd2(i)"
+            >
+              <div class="text-xs text-muted-foreground sm:text-[13px]">{{ card.label }}</div>
+              <div
+                class="overflow-hidden font-mono tabular-nums text-5xl font-bold leading-tight sm:text-6xl"
+                :class="card.soon ? 'text-green-600 dark:text-green-400' : 'text-primary'"
+              >
+                <Transition name="eta-num" mode="out-in">
+                  <span
+                    :key="etaNumKey2[i]"
+                    :style="{ animationDelay: `${i * 70}ms` }"
+                    class="inline-block"
+                    >{{ card.minText }}</span
+                  >
+                </Transition><Transition name="wb-fade">
+                  <span
+                    v-if="card.showUnit"
+                    class="ml-1 text-sm font-semibold text-muted-foreground"
+                    >分鐘</span
+                  >
+                </Transition>
+              </div>
+              <Transition name="wb-fade" mode="out-in">
+                <div :key="card.timeText" class="text-xs sm:text-sm">{{ card.timeText }}</div>
+              </Transition>
+              <Transition name="wb-fade" mode="out-in">
+                <div :key="card.remark" class="min-h-[15px] text-xs text-muted-foreground">
+                  {{ card.remark }}
+                </div>
+              </Transition>
+            </article>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="flex items-center gap-2 text-sm">
+              <span
+                class="inline-block h-2 w-2 shrink-0 rounded-full"
+                :class="statusDotClass2"
+              />
+              <span>{{ status2.message }}</span>
+            </span>
+            <span class="flex-1" />
+            <span class="text-xs text-muted-foreground">{{ detailStats2 }}</span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 全部站點：按鈕 + v-auto-animate 折疊（取代原生 <details> 的瞬間開合） -->
@@ -477,7 +720,7 @@ const selectClass =
       <div v-auto-animate>
         <p v-if="showHelp" class="mt-2 text-xs leading-relaxed text-muted-foreground">
           巴士 / 小巴：輸路線號碼，同一個編號有多條路線時（例如 1
-          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換；港鐵選綫、選站即見下三班車。數據：運輸署
+          號有九巴、城巴、新界小巴、港島小巴）會全部列出，點一下就能自由切換；「第二條路線（換乘）」可以同時查另一條路線，方便轉車。港鐵選綫、選站即見下三班車。數據：運輸署
           / 九巴 / 城巴 / 港鐵經 data.gov.hk，每分鐘更新，僅供參考。
         </p>
       </div>

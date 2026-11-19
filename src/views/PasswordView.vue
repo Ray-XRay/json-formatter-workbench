@@ -76,14 +76,6 @@ const panesRef = ref<HTMLElement | null>(null)
 const splitPct = ref(50)
 const splitPctV = ref(50)
 
-/* 桌面端（lg+）折叠区永远展开：v-if 靠它判断，v-auto-animate 只在手机上播高度动画 */
-const isDesktop = ref(false)
-let mq: MediaQueryList | null = null
-
-function onMqChange(e: MediaQueryListEvent): void {
-  isDesktop.value = e.matches
-}
-
 function restoreSplit(): void {
   try {
     const saved = localStorage.getItem(SPLIT_KEY)
@@ -454,16 +446,12 @@ function onModeChange(e: Event): void {
 }
 
 onMounted((): void => {
-  mq = window.matchMedia('(min-width: 1024px)')
-  isDesktop.value = mq.matches
-  mq.addEventListener('change', onMqChange)
   generate()
 })
 
 onUnmounted((): void => {
   if (checkTimer !== undefined) window.clearTimeout(checkTimer)
   if (pasteTimer !== undefined) window.clearTimeout(pasteTimer)
-  mq?.removeEventListener('change', onMqChange)
 })
 </script>
 
@@ -539,11 +527,13 @@ onUnmounted((): void => {
     <div
       ref="panesRef"
       :style="{ '--pw-split': splitPct + '%', '--pw-split-v': splitPctV + '%' }"
-      class="flex flex-col gap-4 lg:flex-row lg:gap-0"
+      class="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:gap-x-0 lg:gap-y-4"
     >
       <!-- 左：设置。手机上 section 本身透明（max-lg:contents），
-           其子块成为外层容器的 flex 项，用 order 排成 Tab → 设置 → 生成 → 结果 → 折叠工具 → 隐私提示；
-           桌面端 section 仍是左分栏卡片，不动 -->
+           其子块成为外层容器的 flex 项，用 order 排成 Tab → 设置 → 生成 → 结果 → 隐私提示；
+           桌面端 section 仍是左分栏卡片，不动。
+           「查看我的助记词」「检查我的密码」是独立卡片（见结果区下方），
+           手机上 order-4、桌面端另起满宽一行，默认收起。 -->
       <section
         class="min-w-0 rounded-lg border border-border bg-card p-4 shadow-sm max-lg:contents lg:w-[var(--pw-split)] lg:shrink-0 lg:space-y-5 lg:overflow-y-auto"
       >
@@ -702,136 +692,6 @@ onUnmounted((): void => {
 
         </div>
 
-        <div
-          v-auto-animate
-          class="space-y-2 border-t border-border pt-4 max-lg:order-4 max-lg:rounded-lg max-lg:border max-lg:bg-card max-lg:p-4 max-lg:shadow-sm"
-        >
-          <h3 class="text-sm font-medium max-lg:hidden">查看我的助记词</h3>
-          <button
-            type="button"
-            class="flex h-11 w-full items-center justify-between text-sm font-medium lg:hidden"
-            :aria-expanded="pasteOpen"
-            @click="pasteOpen = !pasteOpen"
-          >
-            <span>查看我的助记词</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="wb-chevron h-4 w-4 shrink-0"
-              :class="pasteOpen ? 'wb-chevron--open' : ''"
-              aria-hidden="true"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <div v-if="pasteOpen || isDesktop" class="space-y-2">
-            <textarea
-              v-model="pasteInput"
-              placeholder="粘贴你的助记词，单词之间用空格隔开…"
-              aria-label="要查看的助记词"
-              spellcheck="false"
-              autocomplete="off"
-              rows="3"
-              class="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm leading-relaxed"
-            />
-            <div
-              v-if="pasteWords.length"
-              title="点一下复制这组助记词"
-              class="grid cursor-pointer grid-cols-2 gap-2 sm:grid-cols-3"
-              @click="copyPasted"
-            >
-              <div
-                v-for="(word, i) in pasteWords"
-                :key="i"
-                class="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-2"
-              >
-                <span class="w-4 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{{ i + 1 }}</span>
-                <span class="font-mono text-sm">{{ word }}</span>
-              </div>
-            </div>
-            <p
-              v-if="pasteVerdict"
-              :class="pasteVerdict.kind === 'ok' ? 'text-green-500' : 'text-red-500'"
-              class="text-sm"
-            >
-              {{ pasteVerdict.text }}
-            </p>
-            <p class="text-xs leading-relaxed text-muted-foreground">
-              <span class="max-lg:hidden">只在浏览器里显示，不保存、不上传；</span>粘贴后按钱包样式排成词卡，还会帮你校验是不是有效的 BIP39 助记词。
-            </p>
-          </div>
-        </div>
-
-        <div
-          v-auto-animate
-          class="space-y-2 border-t border-border pt-4 max-lg:order-4 max-lg:rounded-lg max-lg:border max-lg:bg-card max-lg:p-4 max-lg:shadow-sm"
-        >
-          <h3 class="text-sm font-medium max-lg:hidden">检查我的密码</h3>
-          <button
-            type="button"
-            class="flex h-11 w-full items-center justify-between text-sm font-medium lg:hidden"
-            :aria-expanded="checkOpen"
-            @click="checkOpen = !checkOpen"
-          >
-            <span>检查我的密码</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="wb-chevron h-4 w-4 shrink-0"
-              :class="checkOpen ? 'wb-chevron--open' : ''"
-              aria-hidden="true"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <div v-if="checkOpen || isDesktop" class="space-y-2">
-            <div class="flex gap-2">
-              <input
-                v-model="checkInput"
-                :type="checkShow ? 'text' : 'password'"
-                placeholder="粘贴你正在用的密码…"
-                aria-label="要检查的密码"
-                spellcheck="false"
-                autocomplete="off"
-                class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-sm"
-              />
-              <button
-                type="button"
-                class="inline-flex h-9 shrink-0 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
-                @click="checkShow = !checkShow"
-              >
-                {{ checkShow ? '隐藏' : '显示' }}
-              </button>
-            </div>
-            <div v-if="checkAnalysis" class="space-y-1 text-sm">
-              <p>
-                <span :class="checkStrengthClass" class="font-bold">{{ checkStrength?.label }}</span>
-                <span class="text-muted-foreground">
-                  · {{ Math.round(checkAnalysis.bits) }} 位熵 ·
-                  {{ crackTimeText(checkAnalysis.bits) }}
-                </span>
-              </p>
-              <p v-for="w in checkAnalysis.warnings" :key="w" class="text-red-500">{{ w }}</p>
-              <p v-if="!checkAnalysis.warnings.length && checkAnalysis.bits >= 60" class="text-green-500">
-                这个密码不错
-              </p>
-            </div>
-            <p class="text-xs leading-relaxed text-muted-foreground">
-              <span class="max-lg:hidden">只在浏览器里算，不会上传、不会保存；</span>和最常见的弱密码榜单比对过。
-            </p>
-          </div>
-        </div>
-
         <p class="border-t border-border pt-4 text-xs leading-relaxed text-muted-foreground max-lg:order-5">
           生成的密码、助记词、随机数不会保存到任何地方，刷新页面就消失。用完请存到你自己的密码管理器里；助记词抄在纸上。
         </p>
@@ -950,6 +810,134 @@ onUnmounted((): void => {
           <span class="max-lg:hidden">当前模式：{{ modeLabel }}。</span>助记词就是私钥，别截图、别发给别人，抄在纸上收好。
         </p>
       </section>
+
+        <div
+          v-auto-animate
+          class="space-y-2 rounded-lg border border-border bg-card p-4 shadow-sm max-lg:order-4 lg:basis-full"
+        >
+          <button
+            type="button"
+            class="flex h-11 w-full items-center justify-between text-sm font-medium"
+            :aria-expanded="pasteOpen"
+            @click="pasteOpen = !pasteOpen"
+          >
+            <span>查看我的助记词</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="wb-chevron h-4 w-4 shrink-0"
+              :class="pasteOpen ? 'wb-chevron--open' : ''"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div v-if="pasteOpen" class="space-y-2">
+            <textarea
+              v-model="pasteInput"
+              placeholder="粘贴你的助记词，单词之间用空格隔开…"
+              aria-label="要查看的助记词"
+              spellcheck="false"
+              autocomplete="off"
+              rows="3"
+              class="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-sm leading-relaxed"
+            />
+            <div
+              v-if="pasteWords.length"
+              title="点一下复制这组助记词"
+              class="grid cursor-pointer grid-cols-2 gap-2 sm:grid-cols-3"
+              @click="copyPasted"
+            >
+              <div
+                v-for="(word, i) in pasteWords"
+                :key="i"
+                class="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-2"
+              >
+                <span class="w-4 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums">{{ i + 1 }}</span>
+                <span class="font-mono text-sm">{{ word }}</span>
+              </div>
+            </div>
+            <p
+              v-if="pasteVerdict"
+              :class="pasteVerdict.kind === 'ok' ? 'text-green-500' : 'text-red-500'"
+              class="text-sm"
+            >
+              {{ pasteVerdict.text }}
+            </p>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              <span class="max-lg:hidden">只在浏览器里显示，不保存、不上传；</span>粘贴后按钱包样式排成词卡，还会帮你校验是不是有效的 BIP39 助记词。
+            </p>
+          </div>
+        </div>
+
+        <div
+          v-auto-animate
+          class="space-y-2 rounded-lg border border-border bg-card p-4 shadow-sm max-lg:order-4 lg:basis-full"
+        >
+          <button
+            type="button"
+            class="flex h-11 w-full items-center justify-between text-sm font-medium"
+            :aria-expanded="checkOpen"
+            @click="checkOpen = !checkOpen"
+          >
+            <span>检查我的密码</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="wb-chevron h-4 w-4 shrink-0"
+              :class="checkOpen ? 'wb-chevron--open' : ''"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div v-if="checkOpen" class="space-y-2">
+            <div class="flex gap-2">
+              <input
+                v-model="checkInput"
+                :type="checkShow ? 'text' : 'password'"
+                placeholder="粘贴你正在用的密码…"
+                aria-label="要检查的密码"
+                spellcheck="false"
+                autocomplete="off"
+                class="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-sm"
+              />
+              <button
+                type="button"
+                class="inline-flex h-9 shrink-0 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+                @click="checkShow = !checkShow"
+              >
+                {{ checkShow ? '隐藏' : '显示' }}
+              </button>
+            </div>
+            <div v-if="checkAnalysis" class="space-y-1 text-sm">
+              <p>
+                <span :class="checkStrengthClass" class="font-bold">{{ checkStrength?.label }}</span>
+                <span class="text-muted-foreground">
+                  · {{ Math.round(checkAnalysis.bits) }} 位熵 ·
+                  {{ crackTimeText(checkAnalysis.bits) }}
+                </span>
+              </p>
+              <p v-for="w in checkAnalysis.warnings" :key="w" class="text-red-500">{{ w }}</p>
+              <p v-if="!checkAnalysis.warnings.length && checkAnalysis.bits >= 60" class="text-green-500">
+                这个密码不错
+              </p>
+            </div>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              <span class="max-lg:hidden">只在浏览器里算，不会上传、不会保存；</span>和最常见的弱密码榜单比对过。
+            </p>
+          </div>
+        </div>
     </div>
   </div>
 </template>

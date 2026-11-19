@@ -11,7 +11,7 @@ import {
 } from 'reka-ui'
 import { Braces, BusFront, Check, KeyRound, Monitor, QrCode } from 'lucide-vue-next'
 import { useCommandPalette } from '../composables/useCommandPalette'
-import { THEMES, useTheme, type ThemeMeta, type ThemeMode } from '../composables/useTheme'
+import { FAMILIES, useTheme, type FamilyId, type ThemeFamily } from '../composables/useTheme'
 
 interface PaletteAction {
   label: string
@@ -21,13 +21,15 @@ interface PaletteAction {
   swatchBg?: string
   swatchAccent?: string
   run: () => void
-  /** Theme mode this action sets, if it is a theme action. */
-  themeMode?: ThemeMode
+  /** Theme family this action selects, if it is a theme action. */
+  family?: FamilyId
+  /** True when this action toggles follow-system. */
+  followSystemAction?: boolean
 }
 
 const router = useRouter()
 const { isOpen, close } = useCommandPalette()
-const { mode, setMode } = useTheme()
+const { family, followSystem, setFamily, setFollowSystem, variantMetaOf } = useTheme()
 
 const query = ref('')
 const activeIndex = ref(0)
@@ -72,32 +74,34 @@ const toolActions: PaletteAction[] = [
   },
 ]
 
-const themeActions: PaletteAction[] = [
-  ...THEMES.map(
-    (theme: ThemeMeta): PaletteAction => ({
-      label: `${theme.label}主题`,
-      keywords: `主题 ${theme.nameEn.toLowerCase()} ${theme.label}`,
-      hint: theme.nameEn,
+/* 6 个主题族 + 1 个跟随系统开关（不列 4 个浅色 id 为独立动作）。
+ *  computed：行内色块跟当前变体走，开关文案跟跟随状态走。 */
+const themeActions = computed<PaletteAction[]>(() => [
+  ...FAMILIES.map(
+    (f: ThemeFamily): PaletteAction => ({
+      label: `${f.label}主题`,
+      keywords: `主题 ${f.nameEn.toLowerCase()} ${f.label}`,
+      hint: f.nameEn,
       icon: null,
-      swatchBg: theme.swatchBg,
-      swatchAccent: theme.swatchAccent,
-      themeMode: theme.id,
+      swatchBg: variantMetaOf(f.id).swatchBg,
+      swatchAccent: variantMetaOf(f.id).swatchAccent,
+      family: f.id,
       run: (): void => {
-        setMode(theme.id)
+        setFamily(f.id)
       },
     }),
   ),
   {
-    label: '跟随系统',
+    label: followSystem.value ? '关闭跟随系统' : '跟随系统',
     keywords: '跟随 系统 主题 system',
     hint: 'System',
     icon: Monitor,
-    themeMode: 'system',
+    followSystemAction: true,
     run: (): void => {
-      setMode('system')
+      setFollowSystem(!followSystem.value)
     },
   },
-]
+])
 
 interface PaletteGroup {
   label: string
@@ -114,7 +118,7 @@ const groups = computed<PaletteGroup[]>(() => {
     q ? items.filter((a: PaletteAction): boolean => matches(a, q)) : items
   return [
     { label: '工具', items: filter(toolActions) },
-    { label: '主题', items: filter(themeActions) },
+    { label: '主题', items: filter(themeActions.value) },
   ].filter((g: PaletteGroup): boolean => g.items.length > 0)
 })
 
@@ -231,7 +235,10 @@ watch(isOpen, (open: boolean): void => {
                 />
                 <span class="flex-1 truncate">{{ action.label }}</span>
                 <Check
-                  v-if="action.themeMode && mode === action.themeMode"
+                  v-if="
+                    (action.family && family === action.family) ||
+                    (action.followSystemAction && followSystem)
+                  "
                   class="h-4 w-4 shrink-0"
                 />
                 <span v-else-if="action.hint" class="shrink-0 text-xs text-muted-foreground">

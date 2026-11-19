@@ -5,6 +5,7 @@ import bwipjs from 'bwip-js'
 import CopyButton from '../components/CopyButton.vue'
 import WbSpinner from '../components/WbSpinner.vue'
 import { useToast } from '../composables/useToast'
+import { CLEAR_HISTORY_EVENT } from '../composables/useSettings'
 import {
   EC_OPTIONS,
   FORMATS,
@@ -353,6 +354,12 @@ function onClearHistory(): void {
   push('生成历史已清空')
 }
 
+function onClearHistoryEvent(e: Event): void {
+  const scope = (e as CustomEvent<{ scope: string }>).detail?.scope
+  if (scope !== 'qr' && scope !== 'all') return
+  onClearHistory()
+}
+
 function downloadPng(): void {
   const canvas = canvasRef.value
   if (!canvas || !generated.value) {
@@ -544,11 +551,13 @@ onMounted((): void => {
   mq = window.matchMedia('(min-width: 1024px)')
   isDesktop.value = mq.matches
   mq.addEventListener('change', onMqChange)
+  window.addEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
   render()
 })
 
 onUnmounted((): void => {
   mq?.removeEventListener('change', onMqChange)
+  window.removeEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
 })
 
 /* ---------- 模板用样式常量 ---------- */

@@ -1,39 +1,35 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, onUnmounted } from 'vue'
 import {
-  Braces,
-  BusFront,
   CheckCircle2,
-  KeyRound,
-  QrCode,
   Search,
-  type LucideIcon,
 } from 'lucide-vue-next'
 import BrandMenu from '../components/BrandMenu.vue'
 import CommandPalette from '../components/CommandPalette.vue'
 import ErrorBoundary from '../components/ErrorBoundary.vue'
 import ThemeMenu from '../components/ThemeMenu.vue'
+import WbSettingsDialog from '../components/WbSettingsDialog.vue'
 import { useCommandPalette } from '../composables/useCommandPalette'
+import { useSettings } from '../composables/useSettings'
+import { useShortcuts } from '../composables/useShortcuts'
 import { useToast } from '../composables/useToast'
 
-const ROUTE_ICONS: Record<string, LucideIcon> = {
-  'json-sql': Braces,
-  password: KeyRound,
-  'qr-barcode': QrCode,
-  gmb: BusFront,
-}
-
-const route = useRoute()
 const { open, toggle } = useCommandPalette()
+const { open: openSettings } = useSettings()
+const { eventCombo, comboOf } = useShortcuts()
 const { toasts, dismiss } = useToast()
-
-const routeIcon = computed<LucideIcon>((): LucideIcon => ROUTE_ICONS[route.name as string] ?? Braces)
 
 function onKeydown(e: KeyboardEvent): void {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     toggle()
+    return
+  }
+  // 全局设置快捷键（四页通用；组合键从注册表读，用户改键后仍生效）
+  const combo = eventCombo(e)
+  if (combo && combo === comboOf('openSettings')) {
+    e.preventDefault()
+    openSettings()
   }
 }
 
@@ -52,11 +48,6 @@ onUnmounted((): void => {
       class="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card/70 px-3 backdrop-blur sm:px-4"
     >
       <BrandMenu />
-
-      <nav aria-label="面包屑" class="flex min-w-0 items-center gap-1 text-sm">
-        <component :is="routeIcon" class="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span class="hidden truncate font-medium sm:inline">{{ route.meta.title }}</span>
-      </nav>
 
       <div class="flex-1" />
 
@@ -102,5 +93,6 @@ onUnmounted((): void => {
     </div>
 
     <CommandPalette />
+    <WbSettingsDialog />
   </div>
 </template>

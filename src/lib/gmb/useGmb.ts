@@ -22,7 +22,8 @@ import {
   SRC_SHORT,
 } from './api'
 import { MTR_LINES, MTR_LINE_ORDER, findNearestMtrStation, mtrStationName } from './mtrStations'
-import { getRecent, saveRecent } from './recent'
+import { clearRecent, getRecent, saveRecent } from './recent'
+import { CLEAR_HISTORY_EVENT } from '../../composables/useSettings'
 import type {
   BusFound,
   BusState,
@@ -84,6 +85,50 @@ export interface StatusView {
   message: string
 }
 
+
+/** 一條「巴士 · 小巴」查詢面板的全部狀態與操作。useGmb 建兩個實例：
+ *  roadA（主面板；狀態行與港鐵共用）與 roadB（第二條路線，預設不查）。 */
+export interface RoadPanel {
+  routeInput: Ref<string>
+  stopFilter: Ref<string>
+  roadKind: Ref<RoadKind>
+  roadSrc: Ref<string>
+  roadCode: Ref<string>
+  candidates: Ref<RouteCandidate[]>
+  loading: Ref<boolean>
+  status: Ref<StatusView>
+  updatedAt: Ref<string>
+  etaItems: Ref<(EtaItem | null)[]>
+  etaAnim: Ref<boolean[]>
+  etaNumKey: Ref<string[]>
+  etaCards: ComputedRef<EtaCardView[]>
+  dirOptions: ComputedRef<DirItem[]>
+  activeDirKey: ComputedRef<string>
+  currentStops: ComputedRef<StopItem[]>
+  filteredStops: ComputedRef<StopItem[]>
+  stopSeqModel: ComputedRef<number>
+  routeTitle: ComputedRef<string>
+  routeRegionLabel: ComputedRef<string>
+  statusDotClass: ComputedRef<string>
+  detailStats: ComputedRef<string>
+  bus: Ref<BusState>
+  setStatus: (type: StatusType, message: string) => void
+  stampUpdated: () => void
+  renderEtaCards: (items: EtaItem[]) => void
+  onEtaAnimEnd: (index: number) => void
+  search: (
+    code: string,
+    opts?: { dir?: number | string; stop?: number; src?: string },
+  ) => Promise<boolean>
+  loadCurrentEta: () => Promise<void>
+  onSearch: () => void
+  onRouteKeydown: (e: KeyboardEvent) => void
+  onCandidatePick: (cand: RouteCandidate) => void
+  onRecentClick: (entry: RecentEntry) => void
+  onDirPick: (key: string) => void
+  onStopPick: (seq: number) => void
+}
+
 export function useGmb(): {
   mode: Ref<Mode>
   loading: Ref<boolean>
@@ -132,45 +177,17 @@ export function useGmb(): {
   locateNearest: () => Promise<void>
   loadCurrentEta: () => Promise<void>
   refreshNow: () => Promise<void>
+  clearRecentHistory: () => void
+  road2: RoadPanel
 } {
   const route = useRoute()
   const { push } = useToast()
 
   /* ---------- 狀態 ---------- */
   const mode = ref<Mode>('road')
-  const loading = ref(false)
   const refreshing = ref(false)
   const autoRefresh = ref(true)
-  const routeInput = ref('87M')
-  const stopFilter = ref('')
-  const roadKind = ref<RoadKind>('')
-  const roadSrc = ref('')
-  const roadCode = ref('')
-  const candidates = ref<RouteCandidate[]>([])
   const recent = ref<RecentEntry[]>([])
-  const status = ref<StatusView>({ type: 'idle', message: '就緒' })
-  const updatedAt = ref('')
-
-  // 小巴
-  const gmbRouteCode = ref('')
-  const gmbRegion = ref('')
-  const gmbRouteId = ref(0)
-  const gmbDirections = ref<GmbRoute['directions']>([])
-  const gmbRouteSeq = ref(0)
-  const gmbStops = ref<StopItem[]>([])
-  const gmbStopSeq = ref(0)
-
-  // 巴士
-  const bus = ref<BusState>({
-    op: 'KMB',
-    code: '',
-    dirs: [],
-    dirKey: '',
-    serviceType: '1',
-    stops: [],
-    stopSeq: 0,
-    stopId: '',
-  })
 
   // 港鐵（預設荃灣綫葵芳站）
   const mtr = ref<MtrState>({ line: 'TWL', sta: 'KWF', dir: 'UP' })
@@ -180,14 +197,7 @@ export function useGmb(): {
   const nearestInfo = ref('')
   const autoLocate = ref(readAutoLocate())
 
-  // ETA 卡：三格，null = 暫無班次
-  const etaItems = ref<(EtaItem | null)[]>([null, null, null])
-  const etaAnim = ref<boolean[]>([false, false, false])
-  // 到站數字掉落動效的 :key：只有分鐘數真的變了（renderEtaCards 的 changed）才換 key、
-  // 舊數字離場、新數字落下；沒變時 key 不動，不播。
-  const etaNumKey = ref<string[]>(['k0', 'k1', 'k2'])
-  let numKeySeq = 0
-  const lastEtaMin: (number | null)[] = [null, null, null]
+
   // 減弱動態偏好：即時監聽 matchMedia，作業階段改系統設定也生效（不只載入時快照）。
   const reducedMotionQuery =
     typeof window !== 'undefined'
@@ -215,6 +225,53 @@ export function useGmb(): {
 
   let etaTimer: number | undefined
   const animTimers: number[] = []
+
+
+  /* ---------- 巴士 · 小巴面板工廠：roadA（主）與 roadB（第二條路線）共用 ----------
+   *  每個面板自帶一套路線/站點/ETA 狀態；共用的只有最近路線（recent）、
+   *  減弱動態（reducedMotion）、請求計數（markWorking*）與動畫計時器。 */
+  function createRoadPanel(defaultInput: string): RoadPanel {
+  const routeInput = ref(defaultInput)
+  const stopFilter = ref('')
+  const loading = ref(false)
+  const roadKind = ref<RoadKind>('')
+  const roadSrc = ref('')
+  const roadCode = ref('')
+  const candidates = ref<RouteCandidate[]>([])
+  const status = ref<StatusView>({ type: 'idle', message: '就緒' })
+  const updatedAt = ref('')
+
+
+  // 小巴
+  const gmbRouteCode = ref('')
+  const gmbRegion = ref('')
+  const gmbRouteId = ref(0)
+  const gmbDirections = ref<GmbRoute['directions']>([])
+  const gmbRouteSeq = ref(0)
+  const gmbStops = ref<StopItem[]>([])
+  const gmbStopSeq = ref(0)
+
+  // 巴士
+  const bus = ref<BusState>({
+    op: 'KMB',
+    code: '',
+    dirs: [],
+    dirKey: '',
+    serviceType: '1',
+    stops: [],
+    stopSeq: 0,
+    stopId: '',
+  })
+
+
+  // ETA 卡：三格，null = 暫無班次
+  const etaItems = ref<(EtaItem | null)[]>([null, null, null])
+  const etaAnim = ref<boolean[]>([false, false, false])
+  // 到站數字掉落動效的 :key：只有分鐘數真的變了（renderEtaCards 的 changed）才換 key、
+  // 舊數字離場、新數字落下；沒變時 key 不動，不播。
+  const etaNumKey = ref<string[]>(['k0', 'k1', 'k2'])
+  let numKeySeq = 0
+  const lastEtaMin: (number | null)[] = [null, null, null]
 
   function setStatus(type: StatusType, message: string): void {
     status.value = { type, message }
@@ -252,7 +309,7 @@ export function useGmb(): {
     setStatus('ok', `更新於 ${stamp}`)
   }
 
-  /* ---------- 派生 ---------- */
+
   const etaCards = computed<EtaCardView[]>(() =>
     ETA_LABELS.map((label, i) => {
       const item = etaItems.value[i] ?? null
@@ -270,24 +327,6 @@ export function useGmb(): {
     }),
   )
 
-  const mtrLineOptions = computed<{ code: string; name: string }[]>(() =>
-    MTR_LINE_ORDER.map((code) => ({ code, name: MTR_LINES[code]?.name ?? code })),
-  )
-
-  const mtrStations = computed<[string, string, number, number][]>(
-    () => MTR_LINES[mtr.value.line]?.stations ?? [],
-  )
-
-  const mtrDirOptions = computed<DirItem[]>(() => {
-    const line = MTR_LINES[mtr.value.line]
-    if (!line || line.stations.length === 0) return []
-    const first = line.stations[0][1]
-    const last = line.upName ?? line.stations[line.stations.length - 1][1]
-    return [
-      { key: 'UP', label: `往 ${last}` },
-      { key: 'DOWN', label: `往 ${first}` },
-    ]
-  })
 
   const roadDirOptions = computed<DirItem[]>(() => {
     if (roadKind.value === 'gmb') {
@@ -302,12 +341,9 @@ export function useGmb(): {
     return []
   })
 
-  const dirOptions = computed<DirItem[]>(() =>
-    mode.value === 'mtr' ? mtrDirOptions.value : roadDirOptions.value,
-  )
 
+  /* ---------- 派生（只看本面板的路線） ---------- */
   const activeDirKey = computed<string>(() => {
-    if (mode.value === 'mtr') return mtr.value.dir
     if (roadKind.value === 'gmb') return String(gmbRouteSeq.value)
     return bus.value.dirKey
   })
@@ -333,16 +369,11 @@ export function useGmb(): {
     },
   })
 
-  const routeTitle = computed<string>(() =>
-    mode.value === 'mtr' ? '港鐵' : roadCode.value || '巴士 · 小巴',
-  )
+  const routeTitle = computed<string>(() => roadCode.value || '巴士 · 小巴')
 
   const routeRegionLabel = computed<string>(() => {
-    if (mode.value === 'mtr') {
-      const line = MTR_LINES[mtr.value.line]
-      return line ? `${line.name} · ${mtrStationName(mtr.value.line, mtr.value.sta)}` : ''
-    }
-    if (roadKind.value === 'gmb') return SRC_LABEL[`gmb-${gmbRegion.value}` as RoadSrc] ?? gmbRegion.value
+    if (roadKind.value === 'gmb')
+      return SRC_LABEL[`gmb-${gmbRegion.value}` as RoadSrc] ?? gmbRegion.value
     if (roadKind.value === 'bus') return bus.value.op === 'KMB' ? '九巴' : '城巴'
     return ''
   })
@@ -359,13 +390,8 @@ export function useGmb(): {
 
   // 更新時間只在底部狀態行出現一次（status.message 的「更新於 HH:MM:SS」）；
   // 這裡只留「每分鐘更新」，不再重複時間戳。
-  const detailStats = computed<string>(() =>
-    updatedAt.value ? '每分鐘更新' : '',
-  )
+  const detailStats = computed<string>(() => (updatedAt.value ? '每分鐘更新' : ''))
 
-  function srcShort(src: string): string {
-    return SRC_SHORT[src] ?? ''
-  }
 
   /* ---------- 巴士 · 小巴（合併）：同時查五個來源，同編號多條路線任選 ---------- */
   async function roadSearch(
@@ -679,6 +705,135 @@ export function useGmb(): {
     }
   }
 
+
+  /* ---------- 本面板的事件（只看路線，不分模式） ---------- */
+  function onSearch(): void {
+    void roadSearch(routeInput.value, {})
+  }
+
+  function onRouteKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Enter') void roadSearch(routeInput.value, {})
+  }
+
+  function onCandidatePick(cand: RouteCandidate): void {
+    roadLoadCandidate(cand, {})
+  }
+
+  function onRecentClick(entry: RecentEntry): void {
+    routeInput.value = entry.code
+    if (entry.src) void roadLoadBySrc(entry.code, entry.src)
+    else void roadSearch(entry.code, {})
+  }
+
+  function onDirPick(key: string): void {
+    if (roadKind.value === 'bus') busSetDirection(key)
+    else setDirection(Number(key))
+  }
+
+  function onStopPick(seq: number): void {
+    if (roadKind.value === 'bus') busSetStop(seq)
+    else setStop(seq)
+  }
+
+  async function loadCurrentEtaRoad(): Promise<void> {
+    if (roadKind.value === 'bus') await busLoadEta()
+    else if (roadKind.value === 'gmb') await loadEta()
+    // 還沒查過路線：什麼都不做
+  }
+
+
+  return {
+    routeInput,
+    stopFilter,
+    roadKind,
+    roadSrc,
+    roadCode,
+    candidates,
+    loading,
+    status,
+    updatedAt,
+    etaItems,
+    etaAnim,
+    etaNumKey,
+    etaCards,
+    dirOptions: roadDirOptions,
+    activeDirKey,
+    currentStops,
+    filteredStops,
+    stopSeqModel,
+    routeTitle,
+    routeRegionLabel,
+    statusDotClass,
+    detailStats,
+    bus,
+    setStatus,
+    stampUpdated,
+    renderEtaCards,
+    onEtaAnimEnd,
+    search: roadSearch,
+    loadCurrentEta: loadCurrentEtaRoad,
+    onSearch,
+    onRouteKeydown,
+    onCandidatePick,
+    onRecentClick,
+    onDirPick,
+    onStopPick,
+  }
+  }
+
+  const roadA = createRoadPanel('87M')
+  const roadB = createRoadPanel('')
+  // 板面共用的狀態行是主面板的（港鐵也用它）。
+  const { setStatus, stampUpdated, renderEtaCards } = roadA
+
+
+  const mtrLineOptions = computed<{ code: string; name: string }[]>(() =>
+    MTR_LINE_ORDER.map((code) => ({ code, name: MTR_LINES[code]?.name ?? code })),
+  )
+
+  const mtrStations = computed<[string, string, number, number][]>(
+    () => MTR_LINES[mtr.value.line]?.stations ?? [],
+  )
+
+  const mtrDirOptions = computed<DirItem[]>(() => {
+    const line = MTR_LINES[mtr.value.line]
+    if (!line || line.stations.length === 0) return []
+    const first = line.stations[0][1]
+    const last = line.upName ?? line.stations[line.stations.length - 1][1]
+    return [
+      { key: 'UP', label: `往 ${last}` },
+      { key: 'DOWN', label: `往 ${first}` },
+    ]
+  })
+
+
+  /* ---------- 派生（模式相關：港鐵 vs 主面板） ---------- */
+  const dirOptions = computed<DirItem[]>(() =>
+    mode.value === 'mtr' ? mtrDirOptions.value : roadA.dirOptions.value,
+  )
+
+  const activeDirKey = computed<string>(() =>
+    mode.value === 'mtr' ? mtr.value.dir : roadA.activeDirKey.value,
+  )
+
+  const routeTitle = computed<string>(() =>
+    mode.value === 'mtr' ? '港鐵' : roadA.routeTitle.value,
+  )
+
+  const routeRegionLabel = computed<string>(() => {
+    if (mode.value === 'mtr') {
+      const line = MTR_LINES[mtr.value.line]
+      return line ? `${line.name} · ${mtrStationName(mtr.value.line, mtr.value.sta)}` : ''
+    }
+    return roadA.routeRegionLabel.value
+  })
+
+
+  function srcShort(src: string): string {
+    return SRC_SHORT[src] ?? ''
+  }
+
+
   /* ---------- 港鐵 ---------- */
   function onMtrLineChange(): void {
     nearestInfo.value = ''
@@ -764,26 +919,28 @@ export function useGmb(): {
     if (readMtrAuthorized() && autoLocate.value) void locateNearest()
   }
 
+
   /* ---------- 模式切換 / 自動刷新 ---------- */
   function setMode(next: Mode): void {
     mode.value = next
     if (next === 'mtr') {
       void mtrLoadEta()
       maybeAutoLocate()
-    } else if (roadKind.value === 'bus') {
-      void busLoadEta()
-    } else if (roadKind.value === 'gmb') {
-      void loadEta()
+    } else if (roadA.roadKind.value) {
+      void roadA.loadCurrentEta()
     } else {
       // 還沒查過路線：預設就是 87M 四號碼頭出發（方向 2、站 1）
-      void roadSearch('87M', { dir: 2, stop: 1 })
+      void roadA.search('87M', { dir: 2, stop: 1 })
     }
   }
 
   async function loadCurrentEta(): Promise<void> {
     if (mode.value === 'mtr') await mtrLoadEta()
-    else if (roadKind.value === 'bus') await busLoadEta()
-    else await loadEta()
+    else {
+      // 巴士 · 小巴模式：兩條路線同一個 30 秒 tick 一起刷新
+      await roadA.loadCurrentEta()
+      await roadB.loadCurrentEta()
+    }
   }
 
   /** 手動刷新：按鈕轉圈 + 禁用；三卡保持舊數字，等新數據回來才換（不先清空）。 */
@@ -796,6 +953,20 @@ export function useGmb(): {
       refreshing.value = false
     }
   }
+
+
+  /** 設定弹窗的「清除历史记录」：删掉最近路线两个键，刷新芯片。 */
+  function clearRecentHistory(): void {
+    recent.value = clearRecent()
+    push('最近路線已清空')
+  }
+
+  function onClearHistoryEvent(e: Event): void {
+    const scope = (e as CustomEvent<{ scope: string }>).detail?.scope
+    if (scope !== 'gmb' && scope !== 'all') return
+    clearRecentHistory()
+  }
+
 
   function startAutoRefresh(): void {
     stopAutoRefresh()
@@ -822,25 +993,22 @@ export function useGmb(): {
     }
   })
 
-  /* ---------- 事件 ---------- */
+
+  /* ---------- 事件（模式相關：港鐵 vs 主面板） ---------- */
   function onSearch(): void {
-    if (mode.value !== 'mtr') void roadSearch(routeInput.value, {})
+    if (mode.value !== 'mtr') roadA.onSearch()
   }
 
   function onRouteKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Enter' && mode.value !== 'mtr') {
-      void roadSearch(routeInput.value, {})
-    }
+    if (e.key === 'Enter' && mode.value !== 'mtr') roadA.onSearch()
   }
 
   function onCandidatePick(cand: RouteCandidate): void {
-    roadLoadCandidate(cand, {})
+    roadA.onCandidatePick(cand)
   }
 
   function onRecentClick(entry: RecentEntry): void {
-    routeInput.value = entry.code
-    if (entry.src) void roadLoadBySrc(entry.code, entry.src)
-    else void roadSearch(entry.code, {})
+    roadA.onRecentClick(entry)
   }
 
   function onDirPick(key: string): void {
@@ -849,14 +1017,13 @@ export function useGmb(): {
       void mtrLoadEta()
       return
     }
-    if (roadKind.value === 'bus') busSetDirection(key)
-    else setDirection(Number(key))
+    roadA.onDirPick(key)
   }
 
   function onStopPick(seq: number): void {
-    if (roadKind.value === 'bus') busSetStop(seq)
-    else setStop(seq)
+    roadA.onStopPick(seq)
   }
+
 
   /* ---------- 啟動 ---------- */
   function init(): void {
@@ -887,8 +1054,8 @@ export function useGmb(): {
     const initDir = Number(typeof q.dir === 'string' ? q.dir : '') || undefined
     const initStop = Number(typeof q.stop === 'string' ? q.stop : '') || undefined
     const hasParams = Boolean(q.route ?? q.dir ?? q.stop)
-    routeInput.value = initRoute
-    void roadSearch(initRoute, {
+    roadA.routeInput.value = initRoute
+    void roadA.search(initRoute, {
       // 預設就是 87M 四號碼頭出發：方向 2、站 1（不用再輸一次）
       dir: hasParams ? initDir : 2,
       stop: hasParams ? initStop : 1,
@@ -896,53 +1063,56 @@ export function useGmb(): {
     })
   }
 
+
   onMounted(() => {
     init()
     startAutoRefresh()
     reducedMotionQuery?.addEventListener('change', onReducedMotionChange)
+    window.addEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
   })
 
   onUnmounted(() => {
     stopAutoRefresh()
     reducedMotionQuery?.removeEventListener('change', onReducedMotionChange)
+    window.removeEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
     for (const t of animTimers) window.clearTimeout(t)
     animTimers.length = 0
   })
 
   return {
     mode,
-    loading,
+    loading: roadA.loading,
     refreshing,
     autoRefresh,
-    routeInput,
-    stopFilter,
-    roadKind,
-    roadSrc,
-    roadCode,
-    candidates,
+    routeInput: roadA.routeInput,
+    stopFilter: roadA.stopFilter,
+    roadKind: roadA.roadKind,
+    roadSrc: roadA.roadSrc,
+    roadCode: roadA.roadCode,
+    candidates: roadA.candidates,
     recent,
-    bus,
+    bus: roadA.bus,
     mtr,
     locating,
     nearestInfo,
     autoLocate,
-    status,
-    updatedAt,
-    etaItems,
-    etaAnim,
-    etaNumKey,
-    etaCards,
+    status: roadA.status,
+    updatedAt: roadA.updatedAt,
+    etaItems: roadA.etaItems,
+    etaAnim: roadA.etaAnim,
+    etaNumKey: roadA.etaNumKey,
+    etaCards: roadA.etaCards,
     dirOptions,
     activeDirKey,
-    currentStops,
-    filteredStops,
-    stopSeqModel,
+    currentStops: roadA.currentStops,
+    filteredStops: roadA.filteredStops,
+    stopSeqModel: roadA.stopSeqModel,
     routeTitle,
     routeRegionLabel,
     mtrLineOptions,
     mtrStations,
-    statusDotClass,
-    detailStats,
+    statusDotClass: roadA.statusDotClass,
+    detailStats: roadA.detailStats,
     srcShort,
     setMode,
     onSearch,
@@ -953,9 +1123,11 @@ export function useGmb(): {
     onStopPick,
     onMtrLineChange,
     onMtrStationChange,
-    onEtaAnimEnd,
+    onEtaAnimEnd: roadA.onEtaAnimEnd,
     locateNearest,
     loadCurrentEta,
     refreshNow,
+    clearRecentHistory,
+    road2: roadB,
   }
 }
