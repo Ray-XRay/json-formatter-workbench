@@ -273,7 +273,7 @@ function mtrStationDots(code: string): string[] {
  *  只過濾當前綫的站。點選站、點空白處、按 Esc 都關下拉。 */
 const mtrStationMenuOpen = ref(false)
 const mtrStationFilter = ref('')
-const mtrStationFilterInput = ref<HTMLInputElement | null>(null)
+const mtrStationFilterInput = ref<HTMLInputElement | HTMLInputElement[] | null>(null)
 const filteredMtrLineStations = computed((): { code: string; name: string }[] => {
   const q = mtrStationFilter.value.trim().toLowerCase()
   if (!q) return mtrLineStations.value
@@ -285,7 +285,14 @@ const filteredMtrLineStations = computed((): { code: string; name: string }[] =>
 function toggleMtrStationMenu(): void {
   mtrStationMenuOpen.value = !mtrStationMenuOpen.value
   if (mtrStationMenuOpen.value) {
-    void nextTick(() => mtrStationFilterInput.value?.focus())
+    void nextTick(() => {
+      // ref-in-for：整個 GMB 模板在 v-for="blockId in visibleBlocks" 拖拽區塊
+      // 迴圈裡，Vue 把模板 ref 收成陣列，value 是 [input] 而非 input，直接
+      // .focus() 會拋 TypeError: n.focus is not a function（alpha.10 引入，
+      // alpha.12 測試才逮住）。只有一個實例，取 [0] 即可。
+      const el = mtrStationFilterInput.value
+      ;(Array.isArray(el) ? el[0] : el)?.focus()
+    })
   }
 }
 
@@ -302,6 +309,25 @@ function onMtrStationSelect(code: string): void {
 function onMtrLineSelect(line: string): void {
   onMtrLinePick(line)
   closeMtrStationMenu()
+}
+
+/** 綫路下拉框：與選站下拉框同做法（按鈕 + 下拉列表），10 條綫只收一格；
+ *  每行前面是官方綫色圓點 + 綫名，當前綫高亮。點選綫、點空白處、按 Esc 都關下拉。
+ *  切綫走同一條 onMtrLineSelect，邏輯一字未動（onMtrLineSelect 本身不改，
+ *  關下拉在這裡的 wrapper 做）。 */
+const mtrLineMenuOpen = ref(false)
+
+function toggleMtrLineMenu(): void {
+  mtrLineMenuOpen.value = !mtrLineMenuOpen.value
+}
+
+function closeMtrLineMenu(): void {
+  mtrLineMenuOpen.value = false
+}
+
+function onMtrLineRowSelect(line: string): void {
+  onMtrLineSelect(line)
+  closeMtrLineMenu()
 }
 
 /** 綫路徽章：官方底色 + 對比文字色；當前綫描邊高亮、其餘半透明。 */
@@ -443,29 +469,66 @@ const selectClass =
           <p class="text-xs text-muted-foreground">
             位置只在瀏覽器本地計算最近車站，不會上傳。
           </p>
-          <!-- 先選綫：10 條綫一次列出，官方路線圖顏色；當前綫描邊高亮、其餘半透明。
-               切綫時當前站若在新綫上有停就保留，否則落到新綫首站。 -->
-          <div
-            class="flex flex-wrap items-center gap-2"
-            role="tablist"
-            aria-label="綫路"
-          >
+          <!-- 先選綫：10 條綫收進下拉框（手機上不再堆三行），與選站下拉框同做法：
+               每行前面是官方綫色圓點 + 綫名，當前綫高亮；切綫時當前站若在新綫上有停
+               就保留，否則落到新綫首站（onMtrLineSelect 邏輯不動）。 -->
+          <div class="flex flex-wrap items-center gap-2">
             <span class="text-xs text-muted-foreground">綫路</span>
-            <button
-              v-for="line in mtrLineOptions"
-              :key="line.code"
-              type="button"
-              role="tab"
-              :aria-selected="mtr.line === line.code"
-              :class="mtrLineChipClass(line.code)"
-              :style="{
-                backgroundColor: MTR_LINE_COLORS[line.code] ?? '#888888',
-                color: lineChipText(line.code),
-              }"
-              @click="onMtrLineSelect(line.code)"
-            >
-              {{ line.name }}
-            </button>
+            <div class="relative" @keydown.escape="closeMtrLineMenu">
+              <button
+                type="button"
+                aria-haspopup="listbox"
+                :aria-expanded="mtrLineMenuOpen"
+                aria-label="港鐵綫路"
+                :class="selectClass"
+                class="flex items-center gap-2 pr-2"
+                @click="toggleMtrLineMenu"
+              >
+                <span
+                  class="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                  :style="{ backgroundColor: mtrLineColor }"
+                  aria-hidden="true"
+                />
+                <span class="font-medium">{{ mtrLineName(mtr.line) }}</span>
+                <ChevronDown
+                  class="h-4 w-4 shrink-0 text-muted-foreground transition-transform"
+                  :class="{ 'rotate-180': mtrLineMenuOpen }"
+                />
+              </button>
+              <div
+                v-if="mtrLineMenuOpen"
+                class="absolute left-0 z-20 mt-1 w-56 rounded-md border border-border bg-popover shadow-lg"
+              >
+                <div role="listbox" aria-label="港鐵綫路" class="max-h-72 overflow-y-auto p-1">
+                  <button
+                    v-for="line in mtrLineOptions"
+                    :key="line.code"
+                    type="button"
+                    role="option"
+                    :aria-selected="mtr.line === line.code"
+                    class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    :class="mtr.line === line.code ? 'bg-accent font-medium' : ''"
+                    @click="onMtrLineRowSelect(line.code)"
+                  >
+                    <span
+                      class="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                      :style="{ backgroundColor: MTR_LINE_COLORS[line.code] ?? '#888888' }"
+                      aria-hidden="true"
+                    />
+                    <span class="flex-1">{{ line.name }}</span>
+                  </button>
+                </div>
+              </div>
+              <!-- 點空白處關下拉（透明遮罩蓋住全屏，下拉本身 z-20 在遮罩之上） -->
+              <button
+                v-if="mtrLineMenuOpen"
+                type="button"
+                aria-hidden="true"
+                tabindex="-1"
+                class="fixed inset-0 z-10 cursor-default"
+                @click="closeMtrLineMenu"
+              />
+            </div>
           </div>
           <!-- 再選站：只列當前綫的站。原生 select 的選項畫不出色點，改自訂下拉：
                每行前面是該站全部綫路的彩色圓點（轉車站一眼看到所有綫），
@@ -695,11 +758,9 @@ const selectClass =
         </section>
       </template>
 
-      <!-- 下三班車 -->
+      <!-- 下三班車：標題只在上方區塊工具條（WbDragBlock 的 label），內容裡不再重複一行 -->
       <template v-else-if="blockId === 'eta'">
-        <div class="space-y-6">
-          <p class="text-xs font-medium tracking-wide text-muted-foreground">下三班車</p>
-          <section class="grid grid-cols-3 gap-3" aria-live="polite">
+        <section class="grid grid-cols-3 gap-3" aria-live="polite">
       <article
         v-for="(card, i) in etaCards"
         :key="card.label"
@@ -717,17 +778,21 @@ const selectClass =
       >
         <div class="text-xs text-muted-foreground sm:text-[13px]">{{ card.label }}</div>
         <div
-          class="overflow-hidden font-mono tabular-nums text-5xl font-bold leading-tight sm:text-6xl"
+          class="flex min-h-[3.75rem] items-center justify-center overflow-hidden font-mono tabular-nums text-5xl font-bold leading-tight sm:min-h-[4.6875rem] sm:text-6xl"
           :class="card.soon ? 'text-green-600 dark:text-green-400' : 'text-primary'"
         >
           <!-- 數字掉落動效：分鐘數真變時 :key 換，舊數字上滑淡出、新數字從上方落下；
                單位「分鐘」span 在 eta-num Transition 外，不參與掉落，改由 wb-fade
-               淡入淡出（1→0 變「即到」時不硬消失、版式不跳動） -->
+               淡入淡出（1→0 變「即到」時不硬消失、版式不跳動）
+               港鐵到站顯示 Arriving：字號縮到 text-sm / sm:text-lg + nowrap，一行塞進窄卡；
+               容器 min-h 與數字態行高相同（text-5xl 60px / sm:text-6xl 75px），
+               Arriving 垂直居中，數字 ↔ Arriving 切換時卡高不跳。 -->
           <Transition name="eta-num" mode="out-in">
             <span
               :key="etaNumKey[i]"
               :style="{ animationDelay: `${i * 70}ms` }"
               class="inline-block"
+              :class="card.arrivingEn ? 'whitespace-nowrap text-sm sm:text-lg' : ''"
               >{{ card.minText }}</span
             >
           </Transition><Transition name="wb-fade">
@@ -747,8 +812,7 @@ const selectClass =
           </div>
         </Transition>
       </article>
-          </section>
-        </div>
+        </section>
       </template>
 
       <!-- 第二條路線（換乘）：設定開關開著才出現，不折疊、整塊直接顯示；

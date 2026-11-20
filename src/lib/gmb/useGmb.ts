@@ -79,6 +79,8 @@ export interface EtaCardView {
   timeText: string
   remark: string
   soon: boolean
+  /** 港鐵模式到站：大字顯示英文 Arriving（一行、小字號）；巴士 · 小巴仍是「即到」。 */
+  arrivingEn: boolean
 }
 
 export interface StatusView {
@@ -321,15 +323,19 @@ export function useGmb(): {
     ETA_LABELS.map((label, i) => {
       const item = etaItems.value[i] ?? null
       if (!item) {
-        return { label, minText: '—', showUnit: false, timeText: '暫無班次', remark: '', soon: false }
+        return { label, minText: '—', showUnit: false, timeText: '暫無班次', remark: '', soon: false, arrivingEn: false }
       }
+      // 港鐵模式到站（min <= 0）大字顯示英文 Arriving；巴士 · 小巴仍是「即到」。
+      // mode 在外層 useGmb 作用域，createRoadPanel 閉包可見；roadB 的卡在港鐵模式下不顯示。
+      const arrivingEn = item.min <= 0 && mode.value === 'mtr'
       return {
         label,
-        minText: item.min <= 0 ? '即到' : String(item.min),
+        minText: item.min <= 0 ? (arrivingEn ? 'Arriving' : '即到') : String(item.min),
         showUnit: item.min > 0,
         timeText: `${item.time || '—'} 到站`,
         remark: item.remark,
         soon: item.min <= 0,
+        arrivingEn,
       }
     }),
   )
