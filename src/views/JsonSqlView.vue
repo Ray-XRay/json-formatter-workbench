@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { Copy } from 'lucide-vue-next'
 import CopyButton from '../components/CopyButton.vue'
 import JsonTreeNode, { type ToggleSignal } from '../components/JsonTreeNode.vue'
 import { useToast } from '../composables/useToast'
@@ -778,6 +779,7 @@ function pasteClipboard(): void {
           return
         }
         setInputValue(text)
+        scrollPageToTop()
         if (formatOnPaste.value) doFormat()
         else setStatus('idle', '已粘贴，点击「格式化」处理')
       },
@@ -792,10 +794,28 @@ function pasteClipboard(): void {
   }
 }
 
-function onTextareaPaste(): void {
-  window.setTimeout((): void => {
-    if (formatOnPaste.value) doFormat()
-  }, 0)
+function scrollPageToTop(): void {
+  // 页面滚动发生在 AppLayout 的 <main>（overflow-y-auto）里，不是 document；
+  // 只调 window.scrollTo 滚不动，要把 main 也滚回顶部。
+  document.querySelector('main')?.scrollTo(0, 0)
+  window.scrollTo(0, 0)
+}
+
+function onTextareaPaste(e: ClipboardEvent): void {
+  const text = e.clipboardData?.getData('text')
+  if (!text) {
+    // 拿不到剪贴板文本时走默认粘贴（光标处插入），再按原逻辑自动格式化。
+    window.setTimeout((): void => {
+      if (formatOnPaste.value) doFormat()
+    }, 0)
+    return
+  }
+  // Ctrl+V 整份替换：先清空再粘贴，与「粘贴剪贴板」按钮行为一致，
+  // 粘贴后页面滚回顶部。
+  e.preventDefault()
+  setInputValue(text)
+  scrollPageToTop()
+  if (formatOnPaste.value) doFormat()
 }
 
 function onTextareaScroll(): void {
@@ -1498,7 +1518,17 @@ onUnmounted((): void => {
               树形
             </button>
           </div>
-          <CopyButton v-if="lastFormatted" :text="lastFormatted" label="复制结果" />
+          <button
+            v-if="lastFormatted"
+            type="button"
+            aria-label="复制结果"
+            title="复制结果（带颜色）"
+            class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-all hover:bg-accent active:scale-95"
+            @click="copyFormatted"
+          >
+            <Copy class="h-4 w-4" />
+            <span>复制结果</span>
+          </button>
           <button
             v-else
             type="button"

@@ -88,8 +88,7 @@ function toggle(): void {
   expanded.value = !expanded.value
 }
 
-async function copyLeaf(): Promise<void> {
-  const text = String(props.value)
+async function copyTextToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
     push('已复制到剪贴板')
@@ -108,6 +107,17 @@ async function copyLeaf(): Promise<void> {
   }
 }
 
+/** 点值复制值（字符串不带引号）。 */
+function copyLeaf(): void {
+  void copyTextToClipboard(String(props.value))
+}
+
+/** 点键名复制键名原文（不带引号）。 */
+function copyKey(): void {
+  if (props.nodeKey === undefined) return
+  void copyTextToClipboard(String(props.nodeKey))
+}
+
 function leafClass(v: JsonValue): string {
   if (typeof v === 'string') return 'text-emerald-700 dark:text-emerald-300'
   if (typeof v === 'number') return 'text-orange-700 dark:text-orange-300'
@@ -124,14 +134,20 @@ function leafText(v: JsonValue): string {
 <template>
   <div v-show="visible" class="font-mono text-[13px] leading-6 tabular-nums">
     <template v-if="!isObj">
-      <span
-        class="cursor-pointer rounded px-0.5 hover:bg-accent"
-        title="点击复制该值"
-        @click="copyLeaf"
-      >
-        <span v-if="nodeKey !== undefined" class="text-sky-700 dark:text-sky-300">"{{ nodeKey }}"</span>
+      <span class="rounded px-0.5">
+        <span
+          v-if="nodeKey !== undefined"
+          class="cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
+          title="点击复制该键名"
+          @click="copyKey"
+        >"{{ nodeKey }}"</span>
         <span v-if="nodeKey !== undefined">: </span>
-        <span :class="leafClass(value)">{{ leafText(value) }}</span>
+        <span
+          class="cursor-pointer rounded px-0.5 hover:bg-accent"
+          :class="leafClass(value)"
+          title="点击复制该值"
+          @click="copyLeaf"
+        >{{ leafText(value) }}</span>
         <span v-if="comma">,</span>
       </span>
     </template>
@@ -145,7 +161,12 @@ function leafText(v: JsonValue): string {
         >
           <ChevronDown class="wb-chevron h-4 w-4" :class="{ 'wb-chevron--open': expanded }" />
         </button>
-        <span v-if="nodeKey !== undefined" class="shrink-0 text-sky-700 dark:text-sky-300">"{{ nodeKey }}"</span>
+        <span
+          v-if="nodeKey !== undefined"
+          class="shrink-0 cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
+          title="点击复制该键名"
+          @click="copyKey"
+        >"{{ nodeKey }}"</span>
         <span v-if="nodeKey !== undefined" class="shrink-0">: </span>
         <span class="text-muted-foreground">{{ typeLabel }}</span>
         <span v-if="entries.length === 0">{{ openBracket }}{{ closeBracket }}<span v-if="comma">,</span></span>
