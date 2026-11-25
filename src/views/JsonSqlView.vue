@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { Copy } from 'lucide-vue-next'
 import CopyButton from '../components/CopyButton.vue'
 import JsonTreeNode, { type ToggleSignal } from '../components/JsonTreeNode.vue'
@@ -22,7 +22,9 @@ import {
   errorPosition,
   fromBase64Url,
   parseJsonPath,
+  parseSearchKeywords,
   repairJson,
+  resolveSearchMode,
   sortDeep,
   toBase64Url,
   toYamlLines,
@@ -102,6 +104,11 @@ const splitPct = ref(50)
 const sqlFallbackUsed = ref(false)
 const treeToggleSignal = ref<ToggleSignal | null>(null)
 const treeAllExpanded = ref(true)
+/** Alpha.14 search display mode: 'matches' shows only hit paths (default),
+ *  'all' shows the whole tree with hits still highlighted. */
+const treeDisplayMode = ref<'matches' | 'all'>('matches')
+/** Jump-to-locate signal for a matched node clicked in the other view. */
+const treeJumpSignal = ref<{ id: number; path: string } | null>(null)
 
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const gutterEl = ref<HTMLDivElement | null>(null)
@@ -148,14 +155,41 @@ const gutterText = computed((): string => {
   return s
 })
 
+/** Alpha.14 exact-first: the query runs in 'exact' mode whenever the tree
+ *  has at least one exact match; fuzzy is only the fallback. 'none' = no
+ *  search active. */
+const treeSearchKeywords = computed((): string[] => parseSearchKeywords(treeSearch.value))
+const treeSearchMode = computed((): 'exact' | 'fuzzy' | 'none' => {
+  if (!lastValue.value || treeSearchKeywords.value.length === 0) return 'none'
+  return resolveSearchMode(lastValue.value, treeSearchKeywords.value)
+})
+
 const treeMatchCount = computed((): number => {
-  if (!lastValue.value || !treeSearch.value.trim()) return 0
-  return countTreeMatches(lastValue.value, treeSearch.value)
+  if (!lastValue.value || treeSearchKeywords.value.length === 0) return 0
+  return countTreeMatches(
+    lastValue.value,
+    treeSearch.value,
+    undefined,
+    [],
+    treeSearchMode.value === 'exact' ? 'exact' : 'fuzzy',
+  )
 })
 const treeSearchHint = computed((): string => {
   if (!treeSearch.value.trim()) return ''
-  return treeMatchCount.value > 0 ? `找到 ${treeMatchCount.value} 个匹配` : '没有找到匹配'
+  if (treeMatchCount.value === 0) return '没有找到匹配'
+  return treeSearchMode.value === 'fuzzy'
+    ? `无精确匹配，显示 ${treeMatchCount.value} 个模糊结果`
+    : `找到 ${treeMatchCount.value} 个精确匹配`
 })
+
+/* Clearing the search restores the default view: matches-only, so a stale
+ *  'all' from the last query never leaks into the next one. */
+watch(
+  () => treeSearch.value,
+  (next) => {
+    if (!next.trim()) treeDisplayMode.value = 'matches'
+  },
+)
 
 const statusDotClass = computed((): string => {
   if (statusKind.value === 'ok') return 'bg-green-500'
@@ -761,8 +795,41 @@ function toggleAllTree(): void {
   push(treeAllExpanded.value ? '已展开全部节点' : '已折叠全部节点')
 }
 
+/** Alpha.14 search display mode switch (segmented control next to the search
+ *  box). Search term, match count and highlights are untouched. */
+function setTreeDisplayMode(mode: 'matches' | 'all'): void {
+  if (!treeSearch.value.trim()) return
+  treeDisplayMode.value = mode
+}
+
+/** A matched row was clicked: flip the display mode and locate that node in
+ *  the other view (its ancestors expand via the jump signal; the row scrolls
+ *  into view with a brief outline flash). The search itself is untouched. */
+async function onTreeJump(pathJson: string): Promise<void> {
+  treeDisplayMode.value = treeDisplayMode.value === 'matches' ? 'all' : 'matches'
+  treeJumpSignal.value = { id: Date.now(), path: pathJson }
+  await nextTick()
+  const nodes = treeEl.value?.querySelectorAll('[data-node-path]')
+  let target: Element | null = null
+  if (nodes) {
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute('data-node-path') === pathJson) {
+        target = nodes[i]
+        break
+      }
+    }
+  }
+  if (!target) return
+  target.scrollIntoView({ block: 'center' })
+  target.classList.add('wb-jump-flash')
+  window.setTimeout((): void => {
+    target?.classList.remove('wb-jump-flash')
+  }, 1700)
+}
+
 function clearTreeSearchAndFocus(): void {
   treeSearch.value = ''
+  treeDisplayMode.value = 'matches'
   const el = document.getElementById('treeSearchInput')
   el?.focus()
 }
@@ -1576,18 +1643,54 @@ onUnmounted((): void => {
           </button>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <div v-if="currentView === 'tree'" class="flex items-center gap-2 border-b border-border px-3 py-2">
+          <div v-if="currentView === 'tree'" class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
             <input
               id="treeSearchInput"
               v-model="treeSearch"
               type="text"
               placeholder="搜索键名或值，多个关键词用空格分开…"
-              title="多个关键词用空格分开，全部都要命中（同一条路径上）；支持模糊，如 usrnm 能命中 userName"
+              title="精确优先：有精确匹配时只显示精确结果，没有时再模糊匹配；多个关键词用空格分开，全部都要命中"
               spellcheck="false"
               aria-label="搜索树节点"
               class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
               @keydown.escape.stop="clearTreeSearchAndFocus"
             />
+            <div
+              class="inline-flex shrink-0 items-center rounded-md border border-border bg-muted p-0.5"
+              role="group"
+              aria-label="搜索显示方式"
+            >
+              <button
+                type="button"
+                :disabled="!treeSearch.trim()"
+                :aria-pressed="treeDisplayMode === 'matches'"
+                title="只显示含匹配的路径"
+                :class="[
+                  'rounded px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  treeDisplayMode === 'matches'
+                    ? 'bg-background font-medium text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                ]"
+                @click="setTreeDisplayMode('matches')"
+              >
+                仅看匹配
+              </button>
+              <button
+                type="button"
+                :disabled="!treeSearch.trim()"
+                :aria-pressed="treeDisplayMode === 'all'"
+                title="显示整棵树，匹配处仍高亮；点一条匹配可定位"
+                :class="[
+                  'rounded px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  treeDisplayMode === 'all'
+                    ? 'bg-background font-medium text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                ]"
+                @click="setTreeDisplayMode('all')"
+              >
+                显示全部
+              </button>
+            </div>
             <span class="shrink-0 text-xs text-muted-foreground">{{ treeSearchHint }}</span>
             <button
               type="button"
@@ -1618,6 +1721,11 @@ onUnmounted((): void => {
               :query="treeSearch"
               :toggle-signal="treeToggleSignal"
               :all-expanded="treeAllExpanded"
+              :search-mode="treeSearchMode"
+              :display-mode="treeDisplayMode"
+              :path="[]"
+              :jump-signal="treeJumpSignal"
+              @jump="onTreeJump"
             />
             <p v-else class="text-sm text-muted-foreground">先格式化或验证一次，再看树形视图。</p>
           </div>

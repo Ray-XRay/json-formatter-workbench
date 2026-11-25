@@ -7,12 +7,21 @@ import {
   nodeSearchHit,
   parseSearchKeywords,
   treeHasMatch,
+  type SearchMode,
 } from '../lib/jsonsql/jsonCore'
 import { isRecord, type JsonValue } from '../lib/jsonsql/types'
 
 export interface ToggleSignal {
   id: number
   expand: boolean
+}
+
+/** Jump-to-all signal: the path (JSON-encoded segment array) of the matched
+ *  node the user clicked; its ancestors expand so the node is reachable in
+ *  the full tree. */
+export interface JumpSignal {
+  id: number
+  path: string
 }
 
 const props = defineProps<{
@@ -25,8 +34,21 @@ const props = defineProps<{
   /** Current expand-all / collapse-all state; newly mounted nodes start here,
    *  so a collapse-all holds for children mounted later by expanding a parent. */
   allExpanded?: boolean
+  /** Alpha.14 exact-first mode, resolved once at the root ('none' = no search). */
+  searchMode?: 'exact' | 'fuzzy' | 'none'
+  /** 'matches' hides non-matching nodes; 'all' shows the whole tree. */
+  displayMode?: 'matches' | 'all'
+  /** Path segments from the root to this node (array indices included). */
+  path?: (string | number)[]
+  jumpSignal?: JumpSignal | null
   /** Whether a trailing comma follows this node (not the last sibling). */
   comma?: boolean
+}>()
+
+const emit = defineEmits<{
+  /** The user clicked this matched node's row: toggle the display mode and
+   *  locate the node in the other view. Payload is the JSON-encoded path. */
+  jump: [path: string]
 }>()
 
 const { push } = useToast()
@@ -59,19 +81,46 @@ const childAncestorKeys = computed((): (string | number)[] => {
 
 const keywords = computed((): string[] => parseSearchKeywords(props.query))
 
+/** Matching mode for this subtree: the root resolves exact-first once;
+ *  'none' (no search) behaves like fuzzy because keywords are empty anyway. */
+const mode = computed((): SearchMode => (props.searchMode === 'exact' ? 'exact' : 'fuzzy'))
+
 const selfHit = computed((): boolean => {
   if (keywords.value.length === 0) return false
-  return nodeSearchHit(props.value, keywords.value, props.nodeKey, props.ancestorKeys ?? [])
+  return nodeSearchHit(props.value, keywords.value, props.nodeKey, props.ancestorKeys ?? [], mode.value)
 })
 
 const descendantHit = computed((): boolean => {
   if (keywords.value.length === 0) return false
-  return entries.value.some(([k, v]) => treeHasMatch(v, props.query, k, childAncestorKeys.value))
+  return entries.value.some(([k, v]) =>
+    treeHasMatch(v, props.query, k, childAncestorKeys.value, mode.value),
+  )
 })
 
 /** Hidden by search when neither this node nor any descendant matches;
- *  matching nodes keep their ancestors visible. */
-const visible = computed((): boolean => keywords.value.length === 0 || selfHit.value || descendantHit.value)
+ *  matching nodes keep their ancestors visible. 'all' shows everything. */
+const visible = computed(
+  (): boolean =>
+    props.displayMode === 'all' ||
+    keywords.value.length === 0 ||
+    selfHit.value ||
+    descendantHit.value,
+)
+
+/** JSON-encoded path, used as the node's DOM id for jump-to-locate. */
+const pathJson = computed((): string => JSON.stringify(props.path ?? []))
+
+/** Row click (not on the key/value copy spans or the chevron, which stop
+ *  propagation): on a matched node it toggles the display mode and locates
+ *  the node in the other view. Clicks bubbling up from a descendant node
+ *  belong to that descendant, not to this row. */
+function onRowClick(e: MouseEvent): void {
+  if (keywords.value.length === 0 || !selfHit.value) return
+  const t = e.target as HTMLElement | null
+  const nearest = t?.closest('[data-node-path]')
+  if (!nearest || nearest.getAttribute('data-node-path') !== pathJson.value) return
+  emit('jump', pathJson.value)
+}
 
 /** A node the user folded by hand during a search stays folded when the
  *  query changes — the old query watch sprang it back open on every keystroke.
@@ -108,6 +157,28 @@ watch(
 )
 
 watch(
+  () => props.jumpSignal,
+  (signal) => {
+    // The user jumped to a node in the other display mode: expand this node
+    // when it is the target or one of its ancestors, so the target is
+    // reachable (its own row was visible, its children may have been folded).
+    if (!signal) return
+    let target: (string | number)[]
+    try {
+      target = JSON.parse(signal.path) as (string | number)[]
+    } catch {
+      return
+    }
+    const mine = props.path ?? []
+    if (mine.length > target.length) return
+    if (mine.every((seg, i) => String(seg) === String(target[i]))) {
+      expanded.value = true
+      userCollapsed.value = false
+    }
+  },
+)
+
+watch(
   () => props.value,
   () => {
     // A freshly formatted document brings new nodes: start from the current
@@ -127,14 +198,14 @@ function toggle(): void {
 const keyHtml = computed((): string =>
   props.nodeKey === undefined
     ? ''
-    : '"' + highlightSearchHtml(String(props.nodeKey), keywords.value) + '"',
+    : '"' + highlightSearchHtml(String(props.nodeKey), keywords.value, mode.value) + '"',
 )
 
 /** Leaf value with search hits highlighted (string quotes stay outside). */
 const valueHtml = computed((): string => {
   const v = props.value
-  if (typeof v === 'string') return '"' + highlightSearchHtml(v, keywords.value) + '"'
-  return highlightSearchHtml(String(v), keywords.value)
+  if (typeof v === 'string') return '"' + highlightSearchHtml(v, keywords.value, mode.value) + '"'
+  return highlightSearchHtml(String(v), keywords.value, mode.value)
 })
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -176,14 +247,19 @@ function leafClass(v: JsonValue): string {
 </script>
 
 <template>
-  <div v-show="visible" class="font-mono text-[13px] leading-6 tabular-nums">
+  <div
+    v-show="visible"
+    class="font-mono text-[13px] leading-6 tabular-nums"
+    :data-node-path="pathJson"
+    @click="onRowClick"
+  >
     <template v-if="!isObj">
       <span class="rounded px-0.5">
         <span
           v-if="nodeKey !== undefined"
           class="cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
           title="点击复制该键名"
-          @click="copyKey"
+          @click.stop="copyKey"
           v-html="keyHtml"
         />
         <span v-if="nodeKey !== undefined">: </span>
@@ -191,7 +267,7 @@ function leafClass(v: JsonValue): string {
           class="cursor-pointer rounded px-0.5 hover:bg-accent"
           :class="leafClass(value)"
           title="点击复制该值"
-          @click="copyLeaf"
+          @click.stop="copyLeaf"
           v-html="valueHtml"
         />
         <span v-if="comma">,</span>
@@ -203,7 +279,7 @@ function leafClass(v: JsonValue): string {
           type="button"
           class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           :aria-label="expanded ? '折叠' : '展开'"
-          @click="toggle"
+          @click.stop="toggle"
         >
           <ChevronDown class="wb-chevron h-4 w-4" :class="{ 'wb-chevron--open': expanded }" />
         </button>
@@ -211,7 +287,7 @@ function leafClass(v: JsonValue): string {
           v-if="nodeKey !== undefined"
           class="shrink-0 cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
           title="点击复制该键名"
-          @click="copyKey"
+          @click.stop="copyKey"
           v-html="keyHtml"
         />
         <span v-if="nodeKey !== undefined" class="shrink-0">: </span>
@@ -230,7 +306,12 @@ function leafClass(v: JsonValue): string {
             :toggle-signal="toggleSignal"
             :ancestor-keys="childAncestorKeys"
             :all-expanded="allExpanded ?? true"
+            :search-mode="searchMode"
+            :display-mode="displayMode"
+            :path="[...(path ?? []), k]"
+            :jump-signal="jumpSignal"
             :comma="idx < entries.length - 1"
+            @jump="(p: string) => emit('jump', p)"
           />
         </template>
       </div>
@@ -246,6 +327,27 @@ function leafClass(v: JsonValue): string {
 @media (prefers-reduced-motion: reduce) {
   .wb-chevron {
     transition: none;
+  }
+}
+
+/* Alpha.14：跳到另一显示模式后的定位描边，1.6s 淡出；减弱动效时不播。 */
+.wb-jump-flash {
+  animation: wb-jump-flash 1.6s ease-out;
+  border-radius: 4px;
+}
+@keyframes wb-jump-flash {
+  0% {
+    outline: 2px solid var(--ring, #3b82f6);
+    outline-offset: 1px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-jump-flash {
+    animation: none;
   }
 }
 </style>

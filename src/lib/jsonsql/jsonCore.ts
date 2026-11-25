@@ -375,11 +375,21 @@ export interface SearchRange {
   end: number
 }
 
+/** Tree-search match mode (alpha.14): 'exact' matches a keyword only as a
+ *  contiguous substring; 'fuzzy' also accepts a subsequence. Exact wins
+ *  tree-wide — see resolveSearchMode. */
+export type SearchMode = 'exact' | 'fuzzy'
+
 /** Ranges of `text` matched by `keyword` (case-insensitive).
- *  An exact substring wins and returns every occurrence; otherwise a
+ *  In 'exact' mode only contiguous-substring occurrences count. In 'fuzzy'
+ *  mode an exact substring wins and returns every occurrence; otherwise a
  *  subsequence match (e.g. `usrnm` hits `userName`) returns the positions of
  *  the matched characters, adjacent ones merged. Null when no match. */
-export function findKeywordRanges(text: string, keyword: string): SearchRange[] | null {
+export function findKeywordRanges(
+  text: string,
+  keyword: string,
+  mode: SearchMode = 'fuzzy',
+): SearchRange[] | null {
   const t = text.toLowerCase()
   const kw = keyword.toLowerCase()
   if (!kw) return null
@@ -391,6 +401,7 @@ export function findKeywordRanges(text: string, keyword: string): SearchRange[] 
     idx = t.indexOf(kw, idx + kw.length)
   }
   if (ranges.length > 0) return ranges
+  if (mode === 'exact') return null
   // Fuzzy: greedy subsequence scan.
   const positions: number[] = []
   let p = 0
@@ -408,8 +419,12 @@ export function findKeywordRanges(text: string, keyword: string): SearchRange[] 
   return ranges
 }
 
-export function keywordMatchesText(text: string, keyword: string): boolean {
-  return findKeywordRanges(text, keyword) !== null
+export function keywordMatchesText(
+  text: string,
+  keyword: string,
+  mode: SearchMode = 'fuzzy',
+): boolean {
+  return findKeywordRanges(text, keyword, mode) !== null
 }
 
 /** The node's own searchable text: its key (if any) and its leaf value text
@@ -424,25 +439,26 @@ function nodeOwnParts(value: JsonValue, key: string | number | undefined): strin
   return parts
 }
 
-/** Whether this node is a hit under the alpha.13 semantics: every keyword
- *  appears somewhere on the path from the root to this node (ancestor keys +
- *  own key + own leaf value), and at least one keyword matches the node's
- *  own text — the second clause keeps a matching branch from counting its
- *  whole subtree. With a single keyword this reduces to the old
- *  own-text-contains count. */
+/** Whether this node is a hit: every keyword appears somewhere on the path
+ *  from the root to this node (ancestor keys + own key + own leaf value),
+ *  and at least one keyword matches the node's own text — the second clause
+ *  keeps a matching branch from counting its whole subtree. With a single
+ *  keyword this reduces to the old own-text-contains count. `mode` selects
+ *  exact-substring vs subsequence matching for every keyword. */
 export function nodeSearchHit(
   value: JsonValue,
   keywords: string[],
   key: string | number | undefined,
   ancestorKeys: (string | number)[],
+  mode: SearchMode = 'fuzzy',
 ): boolean {
   if (keywords.length === 0) return false
   const ownParts = nodeOwnParts(value, key)
   const pathText = [...ancestorKeys.map(String), ...ownParts].join(' ')
   const ownText = ownParts.join(' ')
   return (
-    keywords.every((kw) => keywordMatchesText(pathText, kw)) &&
-    keywords.some((kw) => keywordMatchesText(ownText, kw))
+    keywords.every((kw) => keywordMatchesText(pathText, kw, mode)) &&
+    keywords.some((kw) => keywordMatchesText(ownText, kw, mode))
   )
 }
 
@@ -453,28 +469,64 @@ function childAncestorKeys(
   return key === undefined ? ancestorKeys : [...ancestorKeys, key]
 }
 
-/** Count hit nodes under the alpha.13 semantics. Mirrors the old signature
+function countTreeMatchesKw(
+  value: JsonValue,
+  keywords: string[],
+  key: string | number | undefined,
+  ancestorKeys: (string | number)[],
+  mode: SearchMode,
+): number {
+  if (keywords.length === 0) return 0
+  let count = nodeSearchHit(value, keywords, key, ancestorKeys, mode) ? 1 : 0
+  const next = childAncestorKeys(key, ancestorKeys)
+  if (Array.isArray(value)) {
+    value.forEach((el) => {
+      count += countTreeMatchesKw(el, keywords, undefined, next, mode)
+    })
+  } else if (isRecord(value)) {
+    Object.keys(value).forEach((k) => {
+      count += countTreeMatchesKw(value[k], keywords, k, next, mode)
+    })
+  }
+  return count
+}
+
+function treeHasMatchKw(
+  value: JsonValue,
+  keywords: string[],
+  key: string | number | undefined,
+  ancestorKeys: (string | number)[],
+  mode: SearchMode,
+): boolean {
+  if (keywords.length === 0) return true
+  if (nodeSearchHit(value, keywords, key, ancestorKeys, mode)) return true
+  const next = childAncestorKeys(key, ancestorKeys)
+  if (Array.isArray(value)) return value.some((el) => treeHasMatchKw(el, keywords, undefined, next, mode))
+  if (isRecord(value))
+    return Object.keys(value).some((k) => treeHasMatchKw(value[k], keywords, k, next, mode))
+  return false
+}
+
+/** Alpha.14 exact-first rule: the whole query runs in 'exact' mode whenever
+ *  at least one node matches exactly; fuzzy is only the fallback when the
+ *  tree has zero exact matches. Empty keywords resolve to 'fuzzy' (no search
+ *  is active, so the mode is never displayed). */
+export function resolveSearchMode(value: JsonValue, keywords: string[]): SearchMode {
+  if (keywords.length === 0) return 'fuzzy'
+  return treeHasMatchKw(value, keywords, undefined, [], 'exact') ? 'exact' : 'fuzzy'
+}
+
+/** Count hit nodes under the resolved mode. Mirrors the old signature
  *  (query is the raw search string); ancestorKeys is the path above `value`. */
 export function countTreeMatches(
   value: JsonValue,
   query: string,
   key?: string | number,
   ancestorKeys: (string | number)[] = [],
+  mode: SearchMode = 'fuzzy',
 ): number {
   const keywords = parseSearchKeywords(query)
-  if (keywords.length === 0) return 0
-  let count = nodeSearchHit(value, keywords, key, ancestorKeys) ? 1 : 0
-  const next = childAncestorKeys(key, ancestorKeys)
-  if (Array.isArray(value)) {
-    value.forEach((el) => {
-      count += countTreeMatches(el, query, undefined, next)
-    })
-  } else if (isRecord(value)) {
-    Object.keys(value).forEach((k) => {
-      count += countTreeMatches(value[k], query, k, next)
-    })
-  }
-  return count
+  return countTreeMatchesKw(value, keywords, key, ancestorKeys, mode)
 }
 
 /** Whether this node or any descendant is a hit. */
@@ -483,26 +535,27 @@ export function treeHasMatch(
   query: string,
   key?: string | number,
   ancestorKeys: (string | number)[] = [],
+  mode: SearchMode = 'fuzzy',
 ): boolean {
   const keywords = parseSearchKeywords(query)
-  if (keywords.length === 0) return true
-  if (nodeSearchHit(value, keywords, key, ancestorKeys)) return true
-  const next = childAncestorKeys(key, ancestorKeys)
-  if (Array.isArray(value)) return value.some((el) => treeHasMatch(el, query, undefined, next))
-  if (isRecord(value))
-    return Object.keys(value).some((k) => treeHasMatch(value[k], query, k, next))
-  return false
+  return treeHasMatchKw(value, keywords, key, ancestorKeys, mode)
 }
 
 /** Escape `text` and wrap every matched fragment in <mark>. Keywords claim
  *  characters in order (first keyword wins an overlap); the class alternates
- *  by keyword index so two keywords are distinguishable. Render only via
- *  v-html from this function's own escaped output. */
-export function highlightSearchHtml(text: string, keywords: string[]): string {
+ *  by keyword index so two keywords are distinguishable. `mode` selects
+ *  exact-substring vs subsequence matching — in exact mode fuzzy-only
+ *  fragments are never marked. Render only via v-html from this function's
+ *  own escaped output. */
+export function highlightSearchHtml(
+  text: string,
+  keywords: string[],
+  mode: SearchMode = 'fuzzy',
+): string {
   if (keywords.length === 0) return escapeHtml(text)
   const claim = new Array<number>(text.length).fill(-1)
   keywords.forEach((kw, ki) => {
-    const ranges = findKeywordRanges(text, kw)
+    const ranges = findKeywordRanges(text, kw, mode)
     if (!ranges) return
     ranges.forEach(({ start, end }) => {
       for (let i = start; i < end; i++) {
