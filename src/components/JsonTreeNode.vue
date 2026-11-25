@@ -41,6 +41,9 @@ const props = defineProps<{
   /** Path segments from the root to this node (array indices included). */
   path?: (string | number)[]
   jumpSignal?: JumpSignal | null
+  /** JSON-encoded path of the current (navigated-to) match, if any: its
+   *  marks use the distinct current colour instead of the keyword colours. */
+  currentPath?: string | null
   /** Whether a trailing comma follows this node (not the last sibling). */
   comma?: boolean
 }>()
@@ -110,6 +113,19 @@ const visible = computed(
 /** JSON-encoded path, used as the node's DOM id for jump-to-locate. */
 const pathJson = computed((): string => JSON.stringify(props.path ?? []))
 
+/** This node is the one the user just navigated to (Enter / ↑ ↓): its
+ *  marks take the distinct current colour. */
+const isCurrent = computed((): boolean => props.currentPath != null && props.currentPath === pathJson.value)
+
+/** Re-colour one node's marks to the current-match colour: the current
+ *  class is ADDED (not swapped in), so the keyword colour classes stay for
+ *  counting — the later .wb-mark-current rule wins the paint. */
+function currentMarks(html: string): string {
+  return isCurrent.value
+    ? html.replace(/class="wb-mark-([ab])"/g, 'class="wb-mark-$1 wb-mark-current"')
+    : html
+}
+
 /** Row click (not on the key/value copy spans or the chevron, which stop
  *  propagation): on a matched node it toggles the display mode and locates
  *  the node in the other view. Clicks bubbling up from a descendant node
@@ -162,6 +178,11 @@ watch(
     // The user jumped to a node in the other display mode: expand this node
     // when it is the target or one of its ancestors, so the target is
     // reachable (its own row was visible, its children may have been folded).
+    // Immediate: ancestors that mount LATE (their parent was folded when
+    // the signal was sent, e.g. after a collapse-all) must see the pending
+    // jump too, or navigation can never reach a folded subtree. The parent
+    // clears the signal once the target is found, so a stale one cannot
+    // spring a later collapse-all back open.
     if (!signal) return
     let target: (string | number)[]
     try {
@@ -176,6 +197,7 @@ watch(
       userCollapsed.value = false
     }
   },
+  { immediate: true },
 )
 
 watch(
@@ -198,14 +220,15 @@ function toggle(): void {
 const keyHtml = computed((): string =>
   props.nodeKey === undefined
     ? ''
-    : '"' + highlightSearchHtml(String(props.nodeKey), keywords.value, mode.value) + '"',
+    : '"' + currentMarks(highlightSearchHtml(String(props.nodeKey), keywords.value, mode.value)) + '"',
 )
 
 /** Leaf value with search hits highlighted (string quotes stay outside). */
 const valueHtml = computed((): string => {
   const v = props.value
-  if (typeof v === 'string') return '"' + highlightSearchHtml(v, keywords.value, mode.value) + '"'
-  return highlightSearchHtml(String(v), keywords.value, mode.value)
+  if (typeof v === 'string')
+    return '"' + currentMarks(highlightSearchHtml(v, keywords.value, mode.value)) + '"'
+  return currentMarks(highlightSearchHtml(String(v), keywords.value, mode.value))
 })
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -310,6 +333,7 @@ function leafClass(v: JsonValue): string {
             :display-mode="displayMode"
             :path="[...(path ?? []), k]"
             :jump-signal="jumpSignal"
+            :current-path="currentPath"
             :comma="idx < entries.length - 1"
             @jump="(p: string) => emit('jump', p)"
           />

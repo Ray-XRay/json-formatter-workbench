@@ -541,6 +541,58 @@ export function treeHasMatch(
   return treeHasMatchKw(value, keywords, key, ancestorKeys, mode)
 }
 
+/** Ordered hit paths (root-first pre-order, the same order the tree renders),
+ *  for match navigation: each entry is the segment array from the root to a
+ *  hit node. The root itself never hits (a branch has no own text). */
+export function collectMatchPaths(
+  value: JsonValue,
+  keywords: string[],
+  mode: SearchMode = 'fuzzy',
+): (string | number)[][] {
+  const out: (string | number)[][] = []
+  function walk(
+    v: JsonValue,
+    key: string | number | undefined,
+    ancestorKeys: (string | number)[],
+    path: (string | number)[],
+  ): void {
+    if (nodeSearchHit(v, keywords, key, ancestorKeys, mode)) out.push([...path])
+    const next = childAncestorKeys(key, ancestorKeys)
+    if (Array.isArray(v)) {
+      // Array elements have no key (same as JsonTreeNode's node-key); the
+      // index still belongs in the path for DOM lookup.
+      v.forEach((el, i) => walk(el, undefined, next, [...path, i]))
+    } else if (isRecord(v)) {
+      Object.keys(v).forEach((k) => walk(v[k], k, next, [...path, k]))
+    }
+  }
+  if (keywords.length > 0) walk(value, undefined, [], [])
+  return out
+}
+
+/** Keywords that match no searchable text anywhere in the tree (any key or
+ *  leaf value, under `mode`) — used to tell the user which keyword missed,
+ *  instead of a bare "no matches". */
+export function missingKeywords(
+  value: JsonValue,
+  keywords: string[],
+  mode: SearchMode = 'fuzzy',
+): string[] {
+  if (keywords.length === 0) return []
+  const texts: string[] = []
+  function walk(v: JsonValue, key: string | number | undefined): void {
+    if (key !== undefined) texts.push(String(key))
+    if (v === null || typeof v !== 'object') {
+      texts.push(typeof v === 'string' ? v : String(v))
+      return
+    }
+    if (Array.isArray(v)) v.forEach((el) => walk(el, undefined))
+    else Object.keys(v).forEach((k) => walk(v[k], k))
+  }
+  walk(value, undefined)
+  return keywords.filter((kw) => !texts.some((t) => keywordMatchesText(t, kw, mode)))
+}
+
 /** Escape `text` and wrap every matched fragment in <mark>. Keywords claim
  *  characters in order (first keyword wins an overlap); the class alternates
  *  by keyword index so two keywords are distinguishable. `mode` selects

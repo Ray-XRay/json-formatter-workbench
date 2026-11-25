@@ -16,11 +16,13 @@ import { generateGo, generatePy, generateTs } from '../lib/jsonsql/generate'
 import { escapeHtml, highlight, highlightSql } from '../lib/jsonsql/highlight'
 import {
   analyze,
+  collectMatchPaths,
   countTreeMatches,
   diffLines,
   evalJsonPath,
   errorPosition,
   fromBase64Url,
+  missingKeywords,
   parseJsonPath,
   parseSearchKeywords,
   repairJson,
@@ -104,9 +106,10 @@ const splitPct = ref(50)
 const sqlFallbackUsed = ref(false)
 const treeToggleSignal = ref<ToggleSignal | null>(null)
 const treeAllExpanded = ref(true)
-/** Alpha.14 search display mode: 'matches' shows only hit paths (default),
- *  'all' shows the whole tree with hits still highlighted. */
-const treeDisplayMode = ref<'matches' | 'all'>('matches')
+/** Alpha.15 search display mode: 'all' (default) shows the whole tree with
+ *  hits highlighted in place; 'matches' is an opt-in filter that hides
+ *  non-matching nodes. */
+const treeDisplayMode = ref<'matches' | 'all'>('all')
 /** Jump-to-locate signal for a matched node clicked in the other view. */
 const treeJumpSignal = ref<{ id: number; path: string } | null>(null)
 
@@ -174,20 +177,60 @@ const treeMatchCount = computed((): number => {
     treeSearchMode.value === 'exact' ? 'exact' : 'fuzzy',
   )
 })
-const treeSearchHint = computed((): string => {
-  if (!treeSearch.value.trim()) return ''
-  if (treeMatchCount.value === 0) return '没有找到匹配'
-  return treeSearchMode.value === 'fuzzy'
-    ? `无精确匹配，显示 ${treeMatchCount.value} 个模糊结果`
-    : `找到 ${treeMatchCount.value} 个精确匹配`
+
+/** Alpha.15 match navigation: hit paths in render order (same predicate as
+ *  the count, so the counter and the list always agree). */
+const treeMatchPaths = computed((): (string | number)[][] => {
+  if (!lastValue.value || treeSearchKeywords.value.length === 0) return []
+  return collectMatchPaths(
+    lastValue.value,
+    treeSearchKeywords.value,
+    treeSearchMode.value === 'exact' ? 'exact' : 'fuzzy',
+  )
+})
+const currentMatchIndex = ref(0)
+const currentMatchPathJson = computed((): string | null => {
+  const p = treeMatchPaths.value[currentMatchIndex.value]
+  return p ? JSON.stringify(p) : null
 })
 
-/* Clearing the search restores the default view: matches-only, so a stale
- *  'all' from the last query never leaks into the next one. */
+/* A new query (or new data) restarts navigation at the first match. */
+watch(treeMatchPaths, () => {
+  currentMatchIndex.value = 0
+})
+
+const treeSearchHint = computed((): string => {
+  if (!treeSearch.value.trim()) return ''
+  if (treeMatchCount.value === 0) {
+    if (lastValue.value) {
+      const missing = missingKeywords(
+        lastValue.value,
+        treeSearchKeywords.value,
+        treeSearchMode.value === 'exact' ? 'exact' : 'fuzzy',
+      )
+      if (missing.length > 0) return `没有找到匹配：“${missing.join('”、“')}”未命中`
+      return '没有找到匹配：关键词未同时出现'
+    }
+    return '没有找到匹配'
+  }
+  const counter = `第 ${currentMatchIndex.value + 1} / 共 ${treeMatchCount.value} 个`
+  return treeSearchMode.value === 'fuzzy'
+    ? `无精确匹配，显示 ${treeMatchCount.value} 个模糊结果 · ${counter}`
+    : `找到 ${treeMatchCount.value} 个精确匹配 · ${counter}`
+})
+
+/* Clearing the search restores the default view: show-all AND fully
+ *  expanded. The global expand/collapse state has to reset too — nodes
+ *  that mount later (when an ancestor expands) initialise from it, so a
+ *  stale collapse-all would otherwise keep them folded after the clear. */
 watch(
   () => treeSearch.value,
   (next) => {
-    if (!next.trim()) treeDisplayMode.value = 'matches'
+    if (!next.trim()) {
+      treeDisplayMode.value = 'all'
+      treeAllExpanded.value = true
+      treeToggleSignal.value = { id: Date.now(), expand: true }
+    }
   },
 )
 
@@ -681,20 +724,18 @@ function writeRichClipboard(html: string, plain: string, okMsg: string): boolean
   return true
 }
 
+/** Alpha.15: 「复制结果」默认指向 Jira — 只写纯文本 ```lang 围栏，不带
+ *  text/html。Jira 编辑器粘贴时优先取 HTML，<pre> 会被转成它自己的无语言
+ *  代码块、行内颜色被清掉；只有纯文本围栏，Jira Cloud 粘贴转换才会建成带
+ *  语言的代码块、由 Jira 自己上色。带颜色的富文本复制走「复制 Markdown」。 */
 function copyFormatted(): void {
   if (!lastFormatted.value) {
     push('没有可复制的内容，先格式化一次')
     return
   }
-  // JSON and SQL output carry highlighting; everything else is plain text.
-  if (outputMode.value !== 'json' && !(outputMode.value === 'text' && currentLang.value === 'sql')) {
-    copyText(lastFormatted.value)
-    return
-  }
-  const richHtml = buildRichHtml()
-  if (!richHtml || !writeRichClipboard(richHtml, lastFormatted.value, '已复制（带颜色）')) {
-    copyText(lastFormatted.value)
-  }
+  const lang = fenceLang()
+  const fenced = '```' + lang + '\n' + lastFormatted.value + '\n```'
+  copyText(fenced, `已复制（Jira 代码块）：粘贴后在代码块里选 ${lang} 语言上色`)
 }
 
 function fenceLang(): string {
@@ -719,21 +760,6 @@ function copyMarkdown(): void {
     if (richHtml && writeRichClipboard(richHtml, fenced, '已复制 Markdown 代码块')) return
   }
   copyText(fenced)
-}
-
-/** 复制到 Jira：只写纯文本 ```lang 围栏，不带 text/html。Jira 编辑器粘贴时优先取
- *  HTML，<pre> 会被转成它自己的无语言代码块、行内颜色被清掉；只有纯文本围栏，
- *  Jira Cloud 粘贴转换才会建成带语言的代码块、由 Jira 自己上色。代码块的颜色是
- *  Jira 自己的高亮，不是粘过去的颜色——这条路本来就带不过去颜色。 */
-function copyJira(): void {
-  moreOpen.value = false
-  if (!lastFormatted.value) {
-    push('没有可复制的内容，先格式化一次')
-    return
-  }
-  const lang = fenceLang()
-  const fenced = '```' + lang + '\n' + lastFormatted.value + '\n```'
-  copyText(fenced, `已复制到 Jira（纯文本）：粘贴后在代码块里选 ${lang} 语言上色`)
 }
 
 function downloadJson(): void {
@@ -802,34 +828,98 @@ function setTreeDisplayMode(mode: 'matches' | 'all'): void {
   treeDisplayMode.value = mode
 }
 
+/** Find a tree row by its JSON-encoded path (avoids selector-escaping the
+ *  JSON string, which contains quotes). */
+function findTreeNode(pathJson: string): Element | null {
+  const nodes = treeEl.value?.querySelectorAll('[data-node-path]')
+  if (!nodes) return null
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].getAttribute('data-node-path') === pathJson) return nodes[i]
+  }
+  return null
+}
+
+/** Brief outline flash on a located row so the eye lands on it. The removal
+ *  timer is tracked per element: jumping to the same row twice in a row
+ *  must restart the full flash, not let the first jump's timer cut the
+ *  second one short. */
+const flashTimers = new WeakMap<Element, number>()
+function flashTreeNode(target: Element): void {
+  target.classList.add('wb-jump-flash')
+  const prev = flashTimers.get(target)
+  if (prev !== undefined) window.clearTimeout(prev)
+  flashTimers.set(
+    target,
+    window.setTimeout(() => {
+      target.classList.remove('wb-jump-flash')
+      flashTimers.delete(target)
+    }, 1700),
+  )
+}
+
+/** Locate a tree node by its JSON-encoded path: send the jump signal (its
+ *  ancestors expand, including ones that mount late — see the immediate
+ *  jump watcher in JsonTreeNode), wait until the row is in the DOM, then
+ *  clear the signal so a stale one can never spring a later collapse-all
+ *  back open. Returns the row element, or null when it never appears. */
+async function jumpToTreeNode(pathJson: string): Promise<Element | null> {
+  const signalId = Date.now()
+  treeJumpSignal.value = { id: signalId, path: pathJson }
+  await nextTick()
+  let target: Element | null = null
+  for (let attempt = 0; attempt < 10; attempt++) {
+    target = findTreeNode(pathJson)
+    if (target) break
+    await new Promise((r) => window.setTimeout(r, 100))
+  }
+  if (treeJumpSignal.value?.id === signalId) treeJumpSignal.value = null
+  return target
+}
+
 /** A matched row was clicked: flip the display mode and locate that node in
- *  the other view (its ancestors expand via the jump signal; the row scrolls
- *  into view with a brief outline flash). The search itself is untouched. */
+ *  the other view (the row scrolls into view with a brief outline flash).
+ *  The search itself is untouched. */
 async function onTreeJump(pathJson: string): Promise<void> {
   treeDisplayMode.value = treeDisplayMode.value === 'matches' ? 'all' : 'matches'
-  treeJumpSignal.value = { id: Date.now(), path: pathJson }
-  await nextTick()
-  const nodes = treeEl.value?.querySelectorAll('[data-node-path]')
-  let target: Element | null = null
-  if (nodes) {
-    for (let i = 0; i < nodes.length; i++) {
-      if (nodes[i].getAttribute('data-node-path') === pathJson) {
-        target = nodes[i]
-        break
-      }
-    }
-  }
+  const target = await jumpToTreeNode(pathJson)
   if (!target) return
   target.scrollIntoView({ block: 'center' })
-  target.classList.add('wb-jump-flash')
-  window.setTimeout((): void => {
-    target?.classList.remove('wb-jump-flash')
-  }, 1700)
+  flashTreeNode(target)
+}
+
+/** Alpha.15 match navigation: jump to a match by index (wraps around).
+ *  Expands the target's ancestors, scrolls it into view, flashes it. */
+async function goToMatch(index: number): Promise<void> {
+  const paths = treeMatchPaths.value
+  if (paths.length === 0) return
+  const wrapped = ((index % paths.length) + paths.length) % paths.length
+  currentMatchIndex.value = wrapped
+  const target = await jumpToTreeNode(JSON.stringify(paths[wrapped]))
+  if (!target) return
+  target.scrollIntoView({ block: 'center' })
+  flashTreeNode(target)
+}
+
+function goToNextMatch(): void {
+  void goToMatch(currentMatchIndex.value + 1)
+}
+
+function goToPrevMatch(): void {
+  void goToMatch(currentMatchIndex.value - 1)
+}
+
+/** Alpha.15: focus the tree search box (Ctrl+F / Cmd+F in tree view). */
+function focusTreeSearch(): void {
+  if (currentView.value !== 'tree') return
+  const el = document.getElementById('treeSearchInput') as HTMLInputElement | null
+  el?.focus()
+  el?.select()
 }
 
 function clearTreeSearchAndFocus(): void {
   treeSearch.value = ''
-  treeDisplayMode.value = 'matches'
+  treeDisplayMode.value = 'all'
+  currentMatchIndex.value = 0
   const el = document.getElementById('treeSearchInput')
   el?.focus()
 }
@@ -1011,6 +1101,20 @@ function onKeydown(e: KeyboardEvent): void {
     moreOpen.value = false
     return
   }
+  // Alpha.15: Ctrl+F / Cmd+F focuses the tree search box — tree view only,
+  // so the browser's own find stays untouched everywhere else.
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    !e.altKey &&
+    !e.shiftKey &&
+    e.key.toLowerCase() === 'f' &&
+    currentView.value === 'tree' &&
+    isJson.value
+  ) {
+    e.preventDefault()
+    focusTreeSearch()
+    return
+  }
   const combo = eventCombo(e)
   if (!combo) return
   const sc = shortcuts.value.find((s) => s.combo === combo)
@@ -1179,7 +1283,7 @@ onUnmounted((): void => {
         <button
           type="button"
           :aria-expanded="moreOpen"
-          title="更多工具：验证、缩进、JSONPath、复制 Markdown、复制到 Jira、下载、生成类型、转 YAML、对比、转义、分享、历史"
+          title="更多工具：验证、缩进、JSONPath、复制 Markdown、下载、生成类型、转 YAML、对比、转义、分享、历史"
           class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
           @click.stop="moreOpen = !moreOpen"
         >
@@ -1217,18 +1321,10 @@ onUnmounted((): void => {
           <button
             type="button"
             class="more-item"
-            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；粘到 Jira 请用「复制到 Jira」"
+            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；要粘到 Jira 请用「复制结果」"
             @click="copyMarkdown"
           >
             复制 Markdown
-          </button>
-          <button
-            type="button"
-            class="more-item"
-            title="只复制纯文本 ```json 围栏，不带颜色：粘到 Jira Cloud 是它自己的代码块、由 Jira 按所选语言上色；旧版 Jira（wiki 标记）请粘进 {code:json}…{code}"
-            @click="copyJira"
-          >
-            复制到 Jira
           </button>
           <button type="button" class="more-item" @click="downloadJson">下载</button>
           <div v-if="isJson" class="more-row">
@@ -1345,18 +1441,10 @@ onUnmounted((): void => {
           <button
             type="button"
             class="more-item"
-            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；粘到 Jira 请用「复制到 Jira」"
+            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；要粘到 Jira 请用「复制结果」"
             @click="copyMarkdown"
           >
             复制 Markdown
-          </button>
-          <button
-            type="button"
-            class="more-item"
-            title="只复制纯文本 ```json 围栏，不带颜色：粘到 Jira Cloud 是它自己的代码块、由 Jira 按所选语言上色；旧版 Jira（wiki 标记）请粘进 {code:json}…{code}"
-            @click="copyJira"
-          >
-            复制到 Jira
           </button>
           <button type="button" class="more-item" @click="downloadJson">下载</button>
           <div v-if="isJson" class="more-row more-row-stack">
@@ -1616,7 +1704,7 @@ onUnmounted((): void => {
             v-if="lastFormatted"
             type="button"
             aria-label="复制结果"
-            title="复制结果（带颜色）"
+            title="复制结果（Jira 代码块，纯文本）"
             class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-medium transition-all hover:bg-accent active:scale-95"
             @click="copyFormatted"
           >
@@ -1649,11 +1737,13 @@ onUnmounted((): void => {
               v-model="treeSearch"
               type="text"
               placeholder="搜索键名或值，多个关键词用空格分开…"
-              title="精确优先：有精确匹配时只显示精确结果，没有时再模糊匹配；多个关键词用空格分开，全部都要命中"
+              title="精确优先：有精确匹配时只显示精确结果，没有时再模糊匹配；多个关键词用空格分开，全部都要命中；Enter 跳下一个，Shift+Enter 跳上一个"
               spellcheck="false"
               aria-label="搜索树节点"
               class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
               @keydown.escape.stop="clearTreeSearchAndFocus"
+              @keydown.enter.exact.prevent="goToNextMatch"
+              @keydown.shift.enter.prevent="goToPrevMatch"
             />
             <div
               class="inline-flex shrink-0 items-center rounded-md border border-border bg-muted p-0.5"
@@ -1691,6 +1781,28 @@ onUnmounted((): void => {
                 显示全部
               </button>
             </div>
+            <div class="inline-flex shrink-0 items-center gap-0.5" role="group" aria-label="跳转匹配">
+              <button
+                type="button"
+                title="上一个匹配（Shift+Enter）"
+                aria-label="上一个匹配"
+                :disabled="treeMatchCount === 0"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                @click="goToPrevMatch"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                title="下一个匹配（Enter）"
+                aria-label="下一个匹配"
+                :disabled="treeMatchCount === 0"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                @click="goToNextMatch"
+              >
+                ↓
+              </button>
+            </div>
             <span class="shrink-0 text-xs text-muted-foreground">{{ treeSearchHint }}</span>
             <button
               type="button"
@@ -1725,6 +1837,7 @@ onUnmounted((): void => {
               :display-mode="treeDisplayMode"
               :path="[]"
               :jump-signal="treeJumpSignal"
+              :current-path="currentMatchPathJson"
               @jump="onTreeJump"
             />
             <p v-else class="text-sm text-muted-foreground">先格式化或验证一次，再看树形视图。</p>
@@ -1781,8 +1894,13 @@ onUnmounted((): void => {
  * 4.59:1 (dark rose on yellow-900) / 4.72:1 (light orange on green-100). */
 .wb-mark-a { background-color: #fef9c3; border-radius: 2px; }
 .wb-mark-b { background-color: #dcfce7; border-radius: 2px; }
+/* Current match (navigation target): distinct orange, with its own text
+ * colour so contrast holds against every leaf colour (white on orange-800
+ * light, orange-950 on orange-300 dark — both ≥ 7:1 by WCAG maths). */
+.wb-mark-current { background-color: #9a3412; color: #ffffff; border-radius: 2px; }
 .dark .wb-mark-a { background-color: #713f12; }
 .dark .wb-mark-b { background-color: #14532d; }
+.dark .wb-mark-current { background-color: #fdba74; color: #431407; }
 .dark .wb-k { color: #82aaff; }
 .dark .wb-s { color: #ecc48d; }
 .dark .wb-n { color: #f78c6c; }

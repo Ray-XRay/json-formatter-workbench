@@ -16,7 +16,7 @@ export interface ShortcutDef {
 export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: 'format', name: '格式化', combo: 'ctrl+enter', allowEditable: true },
   { id: 'selectResult', name: '选中格式化结果', combo: 'ctrl+a', allowEditable: false },
-  { id: 'copyResult', name: '复制结果（带颜色）', combo: 'ctrl+alt+c', allowEditable: true },
+  { id: 'copyResult', name: '复制结果（Jira 代码块）', combo: 'ctrl+alt+c', allowEditable: true },
   { id: 'copyMarkdown', name: '复制为 Markdown 代码块', combo: 'ctrl+alt+m', allowEditable: true },
   { id: 'toggleTree', name: '展开 / 折叠全部节点（树形）', combo: 'ctrl+l', allowEditable: true },
   { id: 'openSettings', name: '打开快捷键设置', combo: 'ctrl+alt+s', allowEditable: true },
