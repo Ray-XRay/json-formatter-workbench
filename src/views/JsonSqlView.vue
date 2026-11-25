@@ -11,7 +11,7 @@ import {
   minifySql,
   validateCode,
 } from '../lib/jsonsql/codeformat'
-import { LANGS, LANG_PLACEHOLDERS, SAMPLE_JSON, SAMPLES, detectLanguage } from '../lib/jsonsql/detect'
+import { LANGS, LANG_PLACEHOLDERS, detectLanguage } from '../lib/jsonsql/detect'
 import { generateGo, generatePy, generateTs } from '../lib/jsonsql/generate'
 import { escapeHtml, highlight, highlightSql } from '../lib/jsonsql/highlight'
 import {
@@ -30,15 +30,18 @@ import {
 import {
   clearDraft,
   clearHistory as clearStoredHistory,
+  consumeJsonPageFirstMount,
   isRememberOn,
   loadDraft,
   loadHistory,
   loadLangMode,
   loadSplit,
+  loadView,
   saveDraft,
   saveHistory,
   saveLangMode,
   saveSplit,
+  saveView,
   setRemember,
 } from '../lib/jsonsql/storage'
 import { CLEAR_HISTORY_EVENT, useSettings } from '../composables/useSettings'
@@ -167,25 +170,25 @@ function setStatus(kind: StatusKind, text: string): void {
   statusText.value = text
 }
 
-function copyText(text: string): void {
+function copyText(text: string, msg = '已复制到剪贴板'): void {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard
       .writeText(text)
-      .then(() => push('已复制到剪贴板'))
-      .catch(() => fallbackCopy(text))
+      .then(() => push(msg))
+      .catch(() => fallbackCopy(text, msg))
   } else {
-    fallbackCopy(text)
+    fallbackCopy(text, msg)
   }
 }
 
-function fallbackCopy(text: string): void {
+function fallbackCopy(text: string, msg = '已复制到剪贴板'): void {
   const ta = document.createElement('textarea')
   ta.value = text
   document.body.appendChild(ta)
   ta.select()
   try {
     document.execCommand('copy')
-    push('已复制到剪贴板')
+    push(msg)
   } catch {
     push('复制失败，请手动选择复制')
   }
@@ -638,7 +641,8 @@ function writeRichClipboard(html: string, plain: string, okMsg: string): boolean
   })
   navigator.clipboard.write([item]).then(
     () => push(okMsg),
-    () => copyText(plain),
+    // 富文本写失败时回落纯文本：如实告诉用户，别用通用提示蒙过去。
+    () => copyText(plain, '富文本复制失败，已复制纯文本'),
   )
   return true
 }
@@ -683,6 +687,21 @@ function copyMarkdown(): void {
   copyText(fenced)
 }
 
+/** 复制到 Jira：只写纯文本 ```lang 围栏，不带 text/html。Jira 编辑器粘贴时优先取
+ *  HTML，<pre> 会被转成它自己的无语言代码块、行内颜色被清掉；只有纯文本围栏，
+ *  Jira Cloud 粘贴转换才会建成带语言的代码块、由 Jira 自己上色。代码块的颜色是
+ *  Jira 自己的高亮，不是粘过去的颜色——这条路本来就带不过去颜色。 */
+function copyJira(): void {
+  moreOpen.value = false
+  if (!lastFormatted.value) {
+    push('没有可复制的内容，先格式化一次')
+    return
+  }
+  const lang = fenceLang()
+  const fenced = '```' + lang + '\n' + lastFormatted.value + '\n```'
+  copyText(fenced, `已复制到 Jira（纯文本）：粘贴后在代码块里选 ${lang} 语言上色`)
+}
+
 function downloadJson(): void {
   moreOpen.value = false
   if (!lastFormatted.value) {
@@ -703,6 +722,7 @@ function downloadJson(): void {
 /* ---------- view / selection / tree ---------- */
 function setView(view: 'code' | 'tree'): void {
   currentView.value = view
+  saveView(view)
   hideDiff()
 }
 
@@ -761,13 +781,6 @@ function clearAll(): void {
   detailStats.value = ''
   setStatus('idle', '已清空')
   textareaEl.value?.focus()
-}
-
-function loadSample(): void {
-  setInputValue(
-    currentLang.value === 'json' ? JSON.stringify(SAMPLE_JSON, null, 2) : SAMPLES[currentLang.value],
-  )
-  doFormat()
 }
 
 function pasteClipboard(): void {
@@ -1017,6 +1030,8 @@ function onDrop(e: DragEvent): void {
 /* ---------- lifecycle ---------- */
 onMounted((): void => {
   setLang(loadLangMode())
+  // 记住上次选的视图：只在当前语言是 JSON 时恢复树形（非 JSON 会强制回代码视图）。
+  if (currentLang.value === 'json' && loadView() === 'tree') currentView.value = 'tree'
   loadShortcutsIntoRegistry()
   historyItems.value = loadHistory()
   const split = loadSplit()
@@ -1024,11 +1039,17 @@ onMounted((): void => {
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onDocumentClick)
   window.addEventListener(CLEAR_HISTORY_EVENT, onClearHistoryEvent)
-  // Draft restore; a share link (#j=) wins over the draft.
-  const draft = loadDraft()
-  if (draft && !inputText.value) {
-    setInputValue(draft)
-    setStatus('idle', '已恢复上次的草稿')
+  // 草稿：新开页面 / 刷新进来时输入框与输出保持空白，不恢复上次草稿；旧草稿
+  // 一并清掉，免得会话内切回时又冒出来。分享链接 (#j=) 不受影响，下面照常载入。
+  // 同一次会话内切到别的工具再切回 JSON 页时，恢复草稿（旧行为）。
+  if (consumeJsonPageFirstMount()) {
+    clearDraft()
+  } else {
+    const draft = loadDraft()
+    if (draft && !inputText.value) {
+      setInputValue(draft)
+      setStatus('idle', '已恢复上次的草稿')
+    }
   }
   loadFromHash()
 })
@@ -1071,10 +1092,19 @@ onUnmounted((): void => {
         type="button"
         :disabled="!canMinify"
         :title="minifyTitle"
-        class="hidden h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 lg:inline-flex"
+        class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
         @click="doMinify"
       >
         压缩
+      </button>
+      <button
+        v-if="isJson"
+        type="button"
+        title="自动修复常见错误（尾随逗号、单引号、未加引号的键、注释）后格式化"
+        class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
+        @click="doRepair"
+      >
+        修复
       </button>
 
       <!-- 更多工具 -->
@@ -1082,7 +1112,7 @@ onUnmounted((): void => {
         <button
           type="button"
           :aria-expanded="moreOpen"
-          title="更多工具：验证、修复、缩进、JSONPath、复制 Markdown、下载、生成类型、转 YAML、对比、转义、分享、历史"
+          title="更多工具：验证、缩进、JSONPath、复制 Markdown、复制到 Jira、下载、生成类型、转 YAML、对比、转义、分享、历史"
           class="inline-flex h-9 items-center rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent active:scale-95"
           @click.stop="moreOpen = !moreOpen"
         >
@@ -1094,15 +1124,6 @@ onUnmounted((): void => {
             class="absolute left-0 top-full z-30 mt-1 hidden max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1.5 text-sm shadow-lg lg:block"
           >
           <button type="button" class="more-item" @click="doValidate">验证</button>
-          <button
-            v-if="isJson"
-            type="button"
-            class="more-item"
-            title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释"
-            @click="doRepair"
-          >
-            修复 JSON
-          </button>
           <div class="more-row">
             <span class="text-muted-foreground">缩进</span>
             <select v-model="indent" class="h-8 rounded-md border border-input bg-background px-1.5 text-sm">
@@ -1129,10 +1150,18 @@ onUnmounted((): void => {
           <button
             type="button"
             class="more-item"
-            title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色"
+            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；粘到 Jira 请用「复制到 Jira」"
             @click="copyMarkdown"
           >
             复制 Markdown
+          </button>
+          <button
+            type="button"
+            class="more-item"
+            title="只复制纯文本 ```json 围栏，不带颜色：粘到 Jira Cloud 是它自己的代码块、由 Jira 按所选语言上色；旧版 Jira（wiki 标记）请粘进 {code:json}…{code}"
+            @click="copyJira"
+          >
+            复制到 Jira
           </button>
           <button type="button" class="more-item" @click="downloadJson">下载</button>
           <div v-if="isJson" class="more-row">
@@ -1223,15 +1252,6 @@ onUnmounted((): void => {
         >
           <div class="mx-auto mb-1 h-1 w-10 rounded-full bg-border" />
           <button type="button" class="more-item" @click="doValidate">验证</button>
-          <button
-            v-if="isJson"
-            type="button"
-            class="more-item"
-            title="自动修复常见错误：尾随逗号、单引号、未加引号的键、注释"
-            @click="doRepair"
-          >
-            修复 JSON
-          </button>
           <div class="more-row">
             <span class="text-muted-foreground">缩进</span>
             <select v-model="indent" class="h-8 rounded-md border border-input bg-background px-1.5 text-sm">
@@ -1258,10 +1278,18 @@ onUnmounted((): void => {
           <button
             type="button"
             class="more-item"
-            title="复制为 Markdown 代码块（```json），粘到 Notion / Jira 是代码块，粘到 Word / 邮件保留颜色"
+            title="复制为 Markdown 代码块（```json），粘到 Notion / Word / 邮件保留颜色；粘到 Jira 请用「复制到 Jira」"
             @click="copyMarkdown"
           >
             复制 Markdown
+          </button>
+          <button
+            type="button"
+            class="more-item"
+            title="只复制纯文本 ```json 围栏，不带颜色：粘到 Jira Cloud 是它自己的代码块、由 Jira 按所选语言上色；旧版 Jira（wiki 标记）请粘进 {code:json}…{code}"
+            @click="copyJira"
+          >
+            复制到 Jira
           </button>
           <button type="button" class="more-item" @click="downloadJson">下载</button>
           <div v-if="isJson" class="more-row more-row-stack">
@@ -1443,7 +1471,6 @@ onUnmounted((): void => {
         <div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span class="text-sm font-medium">输入</span>
           <div class="flex-1" />
-          <button type="button" class="pane-btn" @click="loadSample">载入示例</button>
           <button type="button" class="pane-btn" @click="triggerUpload">打开文件</button>
           <input
             ref="fileInputEl"
@@ -1554,7 +1581,8 @@ onUnmounted((): void => {
               id="treeSearchInput"
               v-model="treeSearch"
               type="text"
-              placeholder="搜索键名或值…"
+              placeholder="搜索键名或值，多个关键词用空格分开…"
+              title="多个关键词用空格分开，全部都要命中（同一条路径上）；支持模糊，如 usrnm 能命中 userName"
               spellcheck="false"
               aria-label="搜索树节点"
               class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
@@ -1589,6 +1617,7 @@ onUnmounted((): void => {
               :value="lastValue"
               :query="treeSearch"
               :toggle-signal="treeToggleSignal"
+              :all-expanded="treeAllExpanded"
             />
             <p v-else class="text-sm text-muted-foreground">先格式化或验证一次，再看树形视图。</p>
           </div>
@@ -1638,6 +1667,14 @@ onUnmounted((): void => {
 .wb-u { color: #be123c; }
 .wb-p { color: #475569; }
 .wb-c { color: #6b7280; font-style: italic; }
+/* Tree search hits: <mark> alternates by keyword index (1st/3rd/5th yellow,
+ * 2nd/4th/6th green). Backgrounds are light in light themes and dark in dark
+ * themes; worst-case contrast against all five leaf-value colours is
+ * 4.59:1 (dark rose on yellow-900) / 4.72:1 (light orange on green-100). */
+.wb-mark-a { background-color: #fef9c3; border-radius: 2px; }
+.wb-mark-b { background-color: #dcfce7; border-radius: 2px; }
+.dark .wb-mark-a { background-color: #713f12; }
+.dark .wb-mark-b { background-color: #14532d; }
 .dark .wb-k { color: #82aaff; }
 .dark .wb-s { color: #ecc48d; }
 .dark .wb-n { color: #f78c6c; }

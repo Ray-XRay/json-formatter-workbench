@@ -348,51 +348,183 @@ export function fromBase64Url(s: string): string {
   return new TextDecoder().decode(bytes)
 }
 
-/* ---------- Tree search ---------- */
+/* ---------- Tree search (alpha.13: multi-keyword, fuzzy, highlight) ---------- */
 
-/** Text a tree node matches against: its key, or its leaf value as shown.
- *  Mirrors 1.x, where a leaf row's text is `"key": value`. */
-function nodeOwnText(value: JsonValue, key: string | number | undefined): string {
-  if (value !== null && typeof value === 'object') {
-    return key === undefined ? '' : `"${key}"`
-  }
-  const leaf = typeof value === 'string' ? `"${value}"` : String(value)
-  return key === undefined ? leaf : `"${key}": ${leaf}`
+import { escapeHtml } from './highlight'
+
+/** Split a query into keywords: whitespace-separated, lowercased, deduped.
+ *  Empty query yields []. */
+export function parseSearchKeywords(query: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .forEach((kw) => {
+      if (kw && !seen.has(kw)) {
+        seen.add(kw)
+        out.push(kw)
+      }
+    })
+  return out
 }
 
-/** Count nodes whose own key / leaf text contains the query (case-insensitive).
- *  Mirrors 1.x filterTree's match count. */
+export interface SearchRange {
+  start: number
+  end: number
+}
+
+/** Ranges of `text` matched by `keyword` (case-insensitive).
+ *  An exact substring wins and returns every occurrence; otherwise a
+ *  subsequence match (e.g. `usrnm` hits `userName`) returns the positions of
+ *  the matched characters, adjacent ones merged. Null when no match. */
+export function findKeywordRanges(text: string, keyword: string): SearchRange[] | null {
+  const t = text.toLowerCase()
+  const kw = keyword.toLowerCase()
+  if (!kw) return null
+  // Exact substring: all occurrences.
+  const ranges: SearchRange[] = []
+  let idx = t.indexOf(kw)
+  while (idx !== -1) {
+    ranges.push({ start: idx, end: idx + kw.length })
+    idx = t.indexOf(kw, idx + kw.length)
+  }
+  if (ranges.length > 0) return ranges
+  // Fuzzy: greedy subsequence scan.
+  const positions: number[] = []
+  let p = 0
+  for (let i = 0; i < kw.length; i++) {
+    const at = t.indexOf(kw[i], p)
+    if (at === -1) return null
+    positions.push(at)
+    p = at + 1
+  }
+  positions.forEach((pos) => {
+    const last = ranges[ranges.length - 1]
+    if (last && last.end === pos) last.end = pos + 1
+    else ranges.push({ start: pos, end: pos + 1 })
+  })
+  return ranges
+}
+
+export function keywordMatchesText(text: string, keyword: string): boolean {
+  return findKeywordRanges(text, keyword) !== null
+}
+
+/** The node's own searchable text: its key (if any) and its leaf value text
+ *  (strings without surrounding quotes; numbers / booleans / null as shown).
+ *  Branch nodes have key text only. */
+function nodeOwnParts(value: JsonValue, key: string | number | undefined): string[] {
+  const parts: string[] = []
+  if (key !== undefined) parts.push(String(key))
+  if (value === null || typeof value !== 'object') {
+    parts.push(typeof value === 'string' ? value : String(value))
+  }
+  return parts
+}
+
+/** Whether this node is a hit under the alpha.13 semantics: every keyword
+ *  appears somewhere on the path from the root to this node (ancestor keys +
+ *  own key + own leaf value), and at least one keyword matches the node's
+ *  own text — the second clause keeps a matching branch from counting its
+ *  whole subtree. With a single keyword this reduces to the old
+ *  own-text-contains count. */
+export function nodeSearchHit(
+  value: JsonValue,
+  keywords: string[],
+  key: string | number | undefined,
+  ancestorKeys: (string | number)[],
+): boolean {
+  if (keywords.length === 0) return false
+  const ownParts = nodeOwnParts(value, key)
+  const pathText = [...ancestorKeys.map(String), ...ownParts].join(' ')
+  const ownText = ownParts.join(' ')
+  return (
+    keywords.every((kw) => keywordMatchesText(pathText, kw)) &&
+    keywords.some((kw) => keywordMatchesText(ownText, kw))
+  )
+}
+
+function childAncestorKeys(
+  key: string | number | undefined,
+  ancestorKeys: (string | number)[],
+): (string | number)[] {
+  return key === undefined ? ancestorKeys : [...ancestorKeys, key]
+}
+
+/** Count hit nodes under the alpha.13 semantics. Mirrors the old signature
+ *  (query is the raw search string); ancestorKeys is the path above `value`. */
 export function countTreeMatches(
   value: JsonValue,
   query: string,
   key?: string | number,
+  ancestorKeys: (string | number)[] = [],
 ): number {
-  const q = query.trim().toLowerCase()
-  if (!q) return 0
-  let count = nodeOwnText(value, key).toLowerCase().includes(q) ? 1 : 0
+  const keywords = parseSearchKeywords(query)
+  if (keywords.length === 0) return 0
+  let count = nodeSearchHit(value, keywords, key, ancestorKeys) ? 1 : 0
+  const next = childAncestorKeys(key, ancestorKeys)
   if (Array.isArray(value)) {
     value.forEach((el) => {
-      count += countTreeMatches(el, q)
+      count += countTreeMatches(el, query, undefined, next)
     })
   } else if (isRecord(value)) {
     Object.keys(value).forEach((k) => {
-      count += countTreeMatches(value[k], q, k)
+      count += countTreeMatches(value[k], query, k, next)
     })
   }
   return count
 }
 
-/** Whether this node or any descendant matches the query. */
+/** Whether this node or any descendant is a hit. */
 export function treeHasMatch(
   value: JsonValue,
   query: string,
   key?: string | number,
+  ancestorKeys: (string | number)[] = [],
 ): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  if (nodeOwnText(value, key).toLowerCase().includes(q)) return true
-  if (Array.isArray(value)) return value.some((el) => treeHasMatch(el, q))
+  const keywords = parseSearchKeywords(query)
+  if (keywords.length === 0) return true
+  if (nodeSearchHit(value, keywords, key, ancestorKeys)) return true
+  const next = childAncestorKeys(key, ancestorKeys)
+  if (Array.isArray(value)) return value.some((el) => treeHasMatch(el, query, undefined, next))
   if (isRecord(value))
-    return Object.keys(value).some((k) => treeHasMatch(value[k], q, k))
+    return Object.keys(value).some((k) => treeHasMatch(value[k], query, k, next))
   return false
+}
+
+/** Escape `text` and wrap every matched fragment in <mark>. Keywords claim
+ *  characters in order (first keyword wins an overlap); the class alternates
+ *  by keyword index so two keywords are distinguishable. Render only via
+ *  v-html from this function's own escaped output. */
+export function highlightSearchHtml(text: string, keywords: string[]): string {
+  if (keywords.length === 0) return escapeHtml(text)
+  const claim = new Array<number>(text.length).fill(-1)
+  keywords.forEach((kw, ki) => {
+    const ranges = findKeywordRanges(text, kw)
+    if (!ranges) return
+    ranges.forEach(({ start, end }) => {
+      for (let i = start; i < end; i++) {
+        if (claim[i] === -1) claim[i] = ki
+      }
+    })
+  })
+  let out = ''
+  let i = 0
+  while (i < text.length) {
+    if (claim[i] === -1) {
+      out += escapeHtml(text[i])
+      i++
+    } else {
+      const ki = claim[i]
+      let j = i
+      while (j < text.length && claim[j] === ki) j++
+      out += `<mark class="wb-mark-${ki % 2 === 0 ? 'a' : 'b'}">${escapeHtml(
+        text.slice(i, j),
+      )}</mark>`
+      i = j
+    }
+  }
+  return out
 }

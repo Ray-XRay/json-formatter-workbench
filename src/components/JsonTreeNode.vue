@@ -2,7 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronDown } from 'lucide-vue-next'
 import { useToast } from '../composables/useToast'
-import { treeHasMatch } from '../lib/jsonsql/jsonCore'
+import {
+  highlightSearchHtml,
+  nodeSearchHit,
+  parseSearchKeywords,
+  treeHasMatch,
+} from '../lib/jsonsql/jsonCore'
 import { isRecord, type JsonValue } from '../lib/jsonsql/types'
 
 export interface ToggleSignal {
@@ -15,6 +20,11 @@ const props = defineProps<{
   nodeKey?: string | number
   query: string
   toggleSignal: ToggleSignal | null
+  /** Ancestor keys from the root to this node's parent (search path). */
+  ancestorKeys?: (string | number)[]
+  /** Current expand-all / collapse-all state; newly mounted nodes start here,
+   *  so a collapse-all holds for children mounted later by expanding a parent. */
+  allExpanded?: boolean
   /** Whether a trailing comma follows this node (not the last sibling). */
   comma?: boolean
 }>()
@@ -41,52 +51,91 @@ const typeLabel = computed((): string => {
 const openBracket = computed((): string => (Array.isArray(props.value) ? '[' : '{'))
 const closeBracket = computed((): string => (Array.isArray(props.value) ? ']' : '}'))
 
-const q = computed((): string => props.query.trim().toLowerCase())
+/** Ancestor keys for this node's children (own key appended when it has one). */
+const childAncestorKeys = computed((): (string | number)[] => {
+  const base = props.ancestorKeys ?? []
+  return props.nodeKey === undefined ? base : [...base, props.nodeKey]
+})
+
+const keywords = computed((): string[] => parseSearchKeywords(props.query))
 
 const selfHit = computed((): boolean => {
-  if (!q.value) return false
-  const v = props.value
-  if (v !== null && typeof v === 'object') {
-    return props.nodeKey === undefined
-      ? false
-      : `"${props.nodeKey}"`.toLowerCase().includes(q.value)
-  }
-  const text = typeof v === 'string' ? `"${v}"` : String(v)
-  const keyText = props.nodeKey === undefined ? '' : `"${props.nodeKey}"`
-  return text.toLowerCase().includes(q.value) || keyText.toLowerCase().includes(q.value)
+  if (keywords.value.length === 0) return false
+  return nodeSearchHit(props.value, keywords.value, props.nodeKey, props.ancestorKeys ?? [])
 })
 
 const descendantHit = computed((): boolean => {
-  if (!q.value) return false
-  return entries.value.some(([k, v]) => treeHasMatch(v, q.value, k))
+  if (keywords.value.length === 0) return false
+  return entries.value.some(([k, v]) => treeHasMatch(v, props.query, k, childAncestorKeys.value))
 })
 
 /** Hidden by search when neither this node nor any descendant matches;
  *  matching nodes keep their ancestors visible. */
-const visible = computed((): boolean => !q.value || selfHit.value || descendantHit.value)
+const visible = computed((): boolean => keywords.value.length === 0 || selfHit.value || descendantHit.value)
 
-const expanded = ref(true)
+/** A node the user folded by hand during a search stays folded when the
+ *  query changes — the old query watch sprang it back open on every keystroke.
+ *  Cleared by expanding the node by hand, by expand-all, or by clearing the
+ *  search. */
+const userCollapsed = ref(false)
+
+const expanded = ref(props.allExpanded ?? true)
 
 watch(
   () => props.query,
   (next) => {
     // Search: auto-expand paths that contain a hit; clearing the search
     // restores the fully-expanded default (mirrors 1.x filterTree('')).
-    if (!next.trim()) expanded.value = true
-    else if (selfHit.value || descendantHit.value) expanded.value = true
+    // A node the user folded by hand during this search is left alone.
+    if (!next.trim()) {
+      expanded.value = true
+      userCollapsed.value = false
+    } else if (!userCollapsed.value && (selfHit.value || descendantHit.value)) {
+      expanded.value = true
+    }
   },
 )
 
 watch(
   () => props.toggleSignal,
   (signal) => {
-    if (signal) expanded.value = signal.expand
+    if (!signal) return
+    expanded.value = signal.expand
+    // Collapse-all during a search is an explicit fold: remember it so the
+    // next keystroke does not spring the node back open. Expand-all clears it.
+    userCollapsed.value = !signal.expand && keywords.value.length > 0
+  },
+)
+
+watch(
+  () => props.value,
+  () => {
+    // A freshly formatted document brings new nodes: start from the current
+    // expand-all / collapse-all state and drop the hand-folded mark.
+    expanded.value = props.allExpanded ?? true
+    userCollapsed.value = false
   },
 )
 
 function toggle(): void {
   expanded.value = !expanded.value
+  if (!expanded.value && keywords.value.length > 0) userCollapsed.value = true
+  else if (expanded.value) userCollapsed.value = false
 }
+
+/** Key label with search hits highlighted (quotes stay outside the marks). */
+const keyHtml = computed((): string =>
+  props.nodeKey === undefined
+    ? ''
+    : '"' + highlightSearchHtml(String(props.nodeKey), keywords.value) + '"',
+)
+
+/** Leaf value with search hits highlighted (string quotes stay outside). */
+const valueHtml = computed((): string => {
+  const v = props.value
+  if (typeof v === 'string') return '"' + highlightSearchHtml(v, keywords.value) + '"'
+  return highlightSearchHtml(String(v), keywords.value)
+})
 
 async function copyTextToClipboard(text: string): Promise<void> {
   try {
@@ -124,11 +173,6 @@ function leafClass(v: JsonValue): string {
   if (typeof v === 'boolean') return 'text-violet-700 dark:text-violet-300'
   return 'text-rose-700 dark:text-rose-300'
 }
-
-function leafText(v: JsonValue): string {
-  if (typeof v === 'string') return `"${v}"`
-  return String(v)
-}
 </script>
 
 <template>
@@ -140,14 +184,16 @@ function leafText(v: JsonValue): string {
           class="cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
           title="点击复制该键名"
           @click="copyKey"
-        >"{{ nodeKey }}"</span>
+          v-html="keyHtml"
+        />
         <span v-if="nodeKey !== undefined">: </span>
         <span
           class="cursor-pointer rounded px-0.5 hover:bg-accent"
           :class="leafClass(value)"
           title="点击复制该值"
           @click="copyLeaf"
-        >{{ leafText(value) }}</span>
+          v-html="valueHtml"
+        />
         <span v-if="comma">,</span>
       </span>
     </template>
@@ -166,7 +212,8 @@ function leafText(v: JsonValue): string {
           class="shrink-0 cursor-pointer rounded px-0.5 text-sky-700 hover:bg-accent dark:text-sky-300"
           title="点击复制该键名"
           @click="copyKey"
-        >"{{ nodeKey }}"</span>
+          v-html="keyHtml"
+        />
         <span v-if="nodeKey !== undefined" class="shrink-0">: </span>
         <span class="text-muted-foreground">{{ typeLabel }}</span>
         <span v-if="entries.length === 0">{{ openBracket }}{{ closeBracket }}<span v-if="comma">,</span></span>
@@ -181,6 +228,8 @@ function leafText(v: JsonValue): string {
             :node-key="Array.isArray(value) ? undefined : k"
             :query="query"
             :toggle-signal="toggleSignal"
+            :ancestor-keys="childAncestorKeys"
+            :all-expanded="allExpanded ?? true"
             :comma="idx < entries.length - 1"
           />
         </template>

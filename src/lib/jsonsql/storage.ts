@@ -13,6 +13,7 @@ export const LANG_MODE_KEY = 'json-wb-lang-mode'
 export const SHORTCUTS_KEY = 'json-wb-shortcuts'
 export const SPLIT_KEY = 'json-wb-split'
 export const SPLIT_V_KEY = 'json-wb-split-v'
+export const VIEW_KEY = 'json-wb-view'
 
 const DRAFT_MAX = 1000000 // over 1 MB is not stored
 const TTL_MS = 7 * 24 * 3600 * 1000 // draft + history expire after 7 days
@@ -150,6 +151,32 @@ export function saveHistory(text: string): void {
 
 export function clearHistory(): void {
   remove(HISTORY_KEY)
+}
+
+/* ---------- View (code / tree) ---------- */
+
+export function loadView(): 'code' | 'tree' {
+  const raw = read(VIEW_KEY)
+  return raw === 'tree' ? 'tree' : 'code'
+}
+
+export function saveView(view: 'code' | 'tree'): void {
+  write(VIEW_KEY, view)
+}
+
+/* ---------- Page-session flag (in-memory only) ---------- */
+
+/** Whether the JSON page has mounted before in this page load. Lives only in
+ *  memory, so a reload / fresh visit resets it while switching tools inside
+ *  the same SPA session does not. Used to tell a fresh visit (do not restore
+ *  the draft) from coming back to the tool mid-session (restore it). */
+let jsonPageMountedBefore = false
+
+/** True only on the first mount of this page load. */
+export function consumeJsonPageFirstMount(): boolean {
+  if (jsonPageMountedBefore) return false
+  jsonPageMountedBefore = true
+  return true
 }
 
 /* ---------- Language mode ---------- */
